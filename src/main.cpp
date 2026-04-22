@@ -32,9 +32,15 @@ static constexpr float kBoostOffset = -10.0f;
 
 static volatile float gBoostSensorVoltage = 0.0f;
 static volatile float gBoostPressure = 0.0f;
+static volatile float gHorsepowerEstimate = 0.0f;
 
 static constexpr float kBoostDisplayMin = -10.0f;
 static constexpr float kBoostDisplayMax = 25.0f;
+static constexpr float kHorsepowerDisplayMin = 0.0f;
+static constexpr float kHorsepowerDisplayMax = 300.0f;
+static constexpr UWORD kColdWaterColor = BLUE;
+static constexpr UWORD kNormalWaterColor = GBLUE;
+static constexpr UWORD kHotWaterColor = RED;
 
 struct GaugeProfile {
   const char* title;
@@ -51,9 +57,14 @@ static const PidMetricConfig kGauge2Metrics[] = {
   {PID_INTAKE_AIR_TEMP, "Intake Air Temp", PID_FORMULA_A_MINUS_40, 1.0f, 0.0f, 1, true},
 };
 
+static const PidMetricConfig kGauge3Metrics[] = {
+  {PID_MAF_AIRFLOW, "MAF", PID_FORMULA_AB_DIV_100, 1.0f, 0.0f, 2, true},
+};
+
 static const GaugeProfile kProfiles[] = {
   {"Gauge 1: Coolant", kGauge1Metrics, sizeof(kGauge1Metrics) / sizeof(kGauge1Metrics[0])},
   {"Gauge 2: Coolant+IAT", kGauge2Metrics, sizeof(kGauge2Metrics) / sizeof(kGauge2Metrics[0])},
+  {"Gauge 3: Horsepower", kGauge3Metrics, sizeof(kGauge3Metrics) / sizeof(kGauge3Metrics[0])},
 };
 
 static volatile size_t gCurrentProfileIndex = 0;
@@ -78,6 +89,10 @@ void updateAnalogSensors() {
 
   gBoostSensorVoltage = sensorVolts;
   gBoostPressure = (sensorVolts * kBoostMultiplier) + kBoostOffset;
+}
+
+void updateDerivedValues() {
+  gHorsepowerEstimate = obdValues.maf_airflow * 1.25f;
 }
 
 void applyGaugeProfile(size_t index) {
@@ -105,6 +120,16 @@ float clampFloat(float value, float minValue, float maxValue) {
     return maxValue;
   }
   return value;
+}
+
+UWORD waterTempColor(float waterTempC) {
+  if (waterTempC < 80.0f) {
+    return kColdWaterColor;
+  }
+  if (waterTempC > 105.0f) {
+    return kHotWaterColor;
+  }
+  return kNormalWaterColor;
 }
 
 void drawClockArc(int cx, int cy, int radius, int thickness, float startClockDeg, float sweepClockDeg, UWORD color) {
@@ -182,8 +207,9 @@ void renderGauge2() {
   drawCenteredTextFixed(112, "BOOST", &Font12, WHITE, BLACK);
 
   // Secondary data in blue on separate, larger lines.
+  const UWORD waterColor = waterTempColor(obdValues.coolant_temp_c);
   snprintf(buffer, sizeof(buffer), "Water: %.0fC", (double)obdValues.coolant_temp_c);
-  drawCenteredTextFixed(146, buffer, &Font16, GBLUE, BLACK);
+  drawCenteredTextFixed(146, buffer, &Font16, waterColor, BLACK);
 
   snprintf(buffer, sizeof(buffer), "AIT: %.0fC", (double)obdValues.intake_air_temp_c);
   drawCenteredTextFixed(168, buffer, &Font16, GBLUE, BLACK);
@@ -206,9 +232,58 @@ void renderGauge2() {
   LCD_1IN28_Display(BlackImage);
 }
 
+void renderGauge3() {
+  Paint_Clear(BLACK);
+
+  const int cx = 120;
+  const int cy = 120;
+  const int arcRadius = 112;
+  const int arcThickness = 14;
+  const float arcStartClockDeg = 240.0f;
+  const float arcSweepClockDeg = 240.0f;
+
+  const float hp = gHorsepowerEstimate;
+  const float normalized = (clampFloat(hp, kHorsepowerDisplayMin, kHorsepowerDisplayMax) - kHorsepowerDisplayMin) /
+                           (kHorsepowerDisplayMax - kHorsepowerDisplayMin);
+  const float filledSweep = arcSweepClockDeg * normalized;
+
+  if (filledSweep > 0.5f) {
+    drawClockArc(cx, cy, arcRadius, arcThickness, arcStartClockDeg, filledSweep, WHITE);
+  }
+
+  char buffer[64];
+
+  snprintf(buffer, sizeof(buffer), "%.0f", (double)hp);
+  drawCenteredTextFixed(84, buffer, &Font24, WHITE, BLACK);
+  drawCenteredTextFixed(112, "HP", &Font16, WHITE, BLACK);
+  drawCenteredTextFixed(146, "MAF x 1.25", &Font12, GBLUE, BLACK);
+
+  const OBDLinkStatus status = getOBDLinkStatus();
+  const bool statusIssue = (status == OBD_STATUS_NO_BUS || status == OBD_STATUS_ERROR);
+  if (statusIssue) {
+    if (gGauge2StatusIssueSinceMs == 0) {
+      gGauge2StatusIssueSinceMs = millis();
+    }
+  } else {
+    gGauge2StatusIssueSinceMs = 0;
+  }
+
+  if (statusIssue && gGauge2StatusIssueSinceMs != 0 && (millis() - gGauge2StatusIssueSinceMs) >= 5000) {
+    snprintf(buffer, sizeof(buffer), "%s", getOBDStatusText());
+    drawCenteredTextFixed(194, buffer, &Font12, GRAY, BLACK);
+  }
+
+  LCD_1IN28_Display(BlackImage);
+}
+
 void renderDisplay() {
   if (gCurrentProfileIndex == 1) {
     renderGauge2();
+    return;
+  }
+
+  if (gCurrentProfileIndex == 2) {
+    renderGauge3();
     return;
   }
 
@@ -301,6 +376,7 @@ void obdTask(void *pvParameters) {
 
     // Compute display values from whatever is currently cached.
     computeOBDValuesFromCache();
+    updateDerivedValues();
 
     vTaskDelay(xLoopDelay);
   }
