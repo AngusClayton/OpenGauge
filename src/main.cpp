@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <math.h>
 #include "Display/lcd_init.h"
 #include "Display/GUI_Paint.h"
 #include "Display/fonts.h"
@@ -32,6 +33,9 @@ static constexpr float kBoostOffset = -10.0f;
 static volatile float gBoostSensorVoltage = 0.0f;
 static volatile float gBoostPressure = 0.0f;
 
+static constexpr float kBoostDisplayMin = -10.0f;
+static constexpr float kBoostDisplayMax = 25.0f;
+
 struct GaugeProfile {
   const char* title;
   const PidMetricConfig* metrics;
@@ -54,6 +58,7 @@ static const GaugeProfile kProfiles[] = {
 
 static volatile size_t gCurrentProfileIndex = 0;
 static uint32_t gLastSwipeMs = 0;
+static uint32_t gGauge2StatusIssueSinceMs = 0;
 
 void initAnalogInputs() {
   analogReadResolution(12);
@@ -92,7 +97,121 @@ void applyGaugeProfile(size_t index) {
   }
 }
 
+float clampFloat(float value, float minValue, float maxValue) {
+  if (value < minValue) {
+    return minValue;
+  }
+  if (value > maxValue) {
+    return maxValue;
+  }
+  return value;
+}
+
+void drawClockArc(int cx, int cy, int radius, int thickness, float startClockDeg, float sweepClockDeg, UWORD color) {
+  const float degToRad = 3.14159265f / 180.0f;
+  const int steps = (int)fabsf(sweepClockDeg);
+  if (steps <= 0) {
+    return;
+  }
+
+  const float stepDeg = sweepClockDeg / (float)steps;
+  for (int i = 0; i <= steps; i++) {
+    const float clockDeg = startClockDeg + (stepDeg * i);
+    const float rad = clockDeg * degToRad;
+    const float s = sinf(rad);
+    const float c = cosf(rad);
+
+    for (int t = 0; t < thickness; t++) {
+      const int r = radius - t;
+      const int x = cx + (int)(s * r);
+      const int y = cy - (int)(c * r);
+      Paint_DrawPoint((UWORD)x, (UWORD)y, color, DOT_PIXEL_2X2, DOT_FILL_AROUND);
+    }
+  }
+}
+
+// GUI_Paint swaps foreground/background in Paint_DrawString_EN internally.
+// Use this wrapper so call sites can pass colors in intuitive order.
+void drawTextFixed(UWORD x, UWORD y, const char* text, sFONT* font, UWORD fg, UWORD bg) {
+  Paint_DrawString_EN(x, y, text, font, bg, fg);
+}
+
+int textWidthPx(const char* text, sFONT* font) {
+  if (text == NULL || font == NULL) {
+    return 0;
+  }
+  return (int)strlen(text) * (int)font->Width;
+}
+
+void drawCenteredTextFixed(UWORD y, const char* text, sFONT* font, UWORD fg, UWORD bg) {
+  const int width = textWidthPx(text, font);
+  int x = (240 - width) / 2;
+  if (x < 0) {
+    x = 0;
+  }
+  drawTextFixed((UWORD)x, y, text, font, fg, bg);
+}
+
+void renderGauge2() {
+  Paint_Clear(BLACK);
+
+  const int cx = 120;
+  const int cy = 120;
+  const int arcRadius = 112;
+  const int arcThickness = 14;
+
+  // 8 o'clock -> 4 o'clock sweep (clockwise 240 degrees)
+  const float arcStartClockDeg = 240.0f;
+  const float arcSweepClockDeg = 240.0f;
+
+  const float boost = gBoostPressure;
+  const float normalized = (clampFloat(boost, kBoostDisplayMin, kBoostDisplayMax) - kBoostDisplayMin) /
+                           (kBoostDisplayMax - kBoostDisplayMin);
+  const float filledSweep = arcSweepClockDeg * normalized;
+
+  // Filled value arc only (no gray track), rendered in white.
+  if (filledSweep > 0.5f) {
+    drawClockArc(cx, cy, arcRadius, arcThickness, arcStartClockDeg, filledSweep, WHITE);
+  }
+
+  char buffer[64];
+
+  // Center boost value in large white text
+  snprintf(buffer, sizeof(buffer), "%.1f", (double)boost);
+  drawCenteredTextFixed(84, buffer, &Font24, WHITE, BLACK);
+  drawCenteredTextFixed(112, "BOOST", &Font12, WHITE, BLACK);
+
+  // Secondary data in blue on separate, larger lines.
+  snprintf(buffer, sizeof(buffer), "Water: %.0fC", (double)obdValues.coolant_temp_c);
+  drawCenteredTextFixed(146, buffer, &Font16, GBLUE, BLACK);
+
+  snprintf(buffer, sizeof(buffer), "AIT: %.0fC", (double)obdValues.intake_air_temp_c);
+  drawCenteredTextFixed(168, buffer, &Font16, GBLUE, BLACK);
+
+  const OBDLinkStatus status = getOBDLinkStatus();
+  const bool statusIssue = (status == OBD_STATUS_NO_BUS || status == OBD_STATUS_ERROR);
+  if (statusIssue) {
+    if (gGauge2StatusIssueSinceMs == 0) {
+      gGauge2StatusIssueSinceMs = millis();
+    }
+  } else {
+    gGauge2StatusIssueSinceMs = 0;
+  }
+
+  if (statusIssue && gGauge2StatusIssueSinceMs != 0 && (millis() - gGauge2StatusIssueSinceMs) >= 5000) {
+    snprintf(buffer, sizeof(buffer), "%s", getOBDStatusText());
+    drawCenteredTextFixed(194, buffer, &Font12, GRAY, BLACK);
+  }
+
+  LCD_1IN28_Display(BlackImage);
+}
+
 void renderDisplay() {
+  if (gCurrentProfileIndex == 1) {
+    renderGauge2();
+    return;
+  }
+
   Paint_Clear(WHITE);
 
   char buffer[100];
