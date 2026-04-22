@@ -1,4 +1,5 @@
 #include "obd.h"
+#include "pid_schedule.h"
 
 // Cache for raw OBD values (indices 0-255 correspond to Standard PIDs)
 int obdCache[256] = {0};
@@ -99,6 +100,7 @@ void processOBDFrame() {
       int B = rxFrame.data[4];
 
       obdCache[pid] = (A << 8) | B;
+      updatePidMetricValueFromRaw(pid, (uint16_t)obdCache[pid]);
       g_lastResponseMs = millis();
       g_obdStatus = OBD_STATUS_RECEIVING;
 

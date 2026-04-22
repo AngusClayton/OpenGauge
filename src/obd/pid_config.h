@@ -10,6 +10,7 @@
 #define PID_COOLANT_TEMP       0x05   // Engine coolant temperature
 #define PID_ENGINE_RPM         0x0C   // Engine RPM
 #define PID_VEHICLE_SPEED      0x0D   // Vehicle speed
+#define PID_INTAKE_AIR_TEMP    0x0F   // Intake air temperature
 #define PID_INTAKE_PRESSURE    0x0B   // Intake manifold absolute pressure
 #define PID_ENGINE_LOAD        0x04   // Calculated engine load
 #define PID_FUEL_PRESSURE      0x0A   // Fuel pressure
@@ -28,6 +29,8 @@
 struct OBDValues {
   float coolant_temp_c;      // Coolant temperature (°C)
   float coolant_temp_f;      // Coolant temperature (°F)
+  float intake_air_temp_c;   // Intake air temperature (°C)
+  float intake_air_temp_f;   // Intake air temperature (°F)
   uint16_t rpm;              // Engine RPM
   uint8_t vehicle_speed_kmh; // Vehicle speed (km/h)
   uint8_t vehicle_speed_mph; // Vehicle speed (mph)

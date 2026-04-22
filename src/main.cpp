@@ -6,6 +6,7 @@
 #include "Display/CST816S.h"
 #include "obd/obd.h"
 #include "obd/pid_config.h"
+#include "obd/pid_schedule.h"
 
 // External display buffer
 extern UWORD *BlackImage;
@@ -17,42 +18,83 @@ CST816S touch(6, 7, 13, 5);  // sda, scl, rst, irq
 TaskHandle_t obdTaskHandle = NULL;
 TaskHandle_t displayTaskHandle = NULL;
 
-static const uint8_t kPidSchedule[] = {
-  PID_ENGINE_RPM,
-  PID_VEHICLE_SPEED,
-  PID_COOLANT_TEMP,
-  PID_ENGINE_LOAD,
-  PID_THROTTLE_POS,
-  PID_INTAKE_PRESSURE,
-  PID_MAF_AIRFLOW,
-  PID_FUEL_LEVEL,
-  PID_IGNITION_TIMING,
-  PID_FUEL_PRESSURE,
-  PID_O2_VOLTAGE,
-  PID_ETHANOL_FUEL,
+struct GaugeProfile {
+  const char* title;
+  const PidMetricConfig* metrics;
+  size_t metricCount;
 };
+
+static const PidMetricConfig kGauge1Metrics[] = {
+  {PID_COOLANT_TEMP, "Coolant Temp", PID_FORMULA_A_MINUS_40, 1.0f, 0.0f, 1, true},
+};
+
+static const PidMetricConfig kGauge2Metrics[] = {
+  {PID_COOLANT_TEMP, "Coolant Temp", PID_FORMULA_A_MINUS_40, 1.0f, 0.0f, 1, true},
+  {PID_INTAKE_AIR_TEMP, "Intake Air Temp", PID_FORMULA_A_MINUS_40, 1.0f, 0.0f, 1, true},
+};
+
+static const GaugeProfile kProfiles[] = {
+  {"Gauge 1: Coolant", kGauge1Metrics, sizeof(kGauge1Metrics) / sizeof(kGauge1Metrics[0])},
+  {"Gauge 2: Coolant+IAT", kGauge2Metrics, sizeof(kGauge2Metrics) / sizeof(kGauge2Metrics[0])},
+};
+
+static volatile size_t gCurrentProfileIndex = 0;
+static uint32_t gLastSwipeMs = 0;
+
+void applyGaugeProfile(size_t index) {
+  const size_t profileCount = sizeof(kProfiles) / sizeof(kProfiles[0]);
+  if (index >= profileCount) {
+    return;
+  }
+
+  if (setPidMetricConfigList(kProfiles[index].metrics, kProfiles[index].metricCount)) {
+    gCurrentProfileIndex = index;
+    Serial.printf("[GAUGE] Switched to profile %u: %s (%u PIDs)\n",
+                  (unsigned int)(index + 1),
+                  kProfiles[index].title,
+                  (unsigned int)getPidScheduleCount());
+  } else {
+    Serial.println("[GAUGE] Failed to apply gauge profile");
+  }
+}
 
 void renderDisplay() {
   Paint_Clear(WHITE);
 
   char buffer[100];
+  const GaugeProfile& profile = kProfiles[gCurrentProfileIndex];
 
-  Paint_DrawString_EN(50, 10, "32 Gauge", &Font24, BLACK, WHITE);
+  Paint_DrawString_EN(10, 10, "32 Gauge", &Font20, BLACK, WHITE);
+  Paint_DrawString_EN(10, 34, profile.title, &Font12, BLACK, WHITE);
 
-  snprintf(buffer, sizeof(buffer), "RPM: %d", obdValues.rpm);
-  Paint_DrawString_EN(50, 40, buffer, &Font16, BLACK, WHITE);
+  float value = 0.0f;
+  bool valid = false;
 
-  snprintf(buffer, sizeof(buffer), "Speed: %d km/h", obdValues.vehicle_speed_kmh);
-  Paint_DrawString_EN(50, 60, buffer, &Font16, BLACK, WHITE);
+  const uint8_t pid1 = profile.metrics[0].pid;
+  getPidMetricValue(pid1, &value, &valid);
+  if (valid) {
+    snprintf(buffer, sizeof(buffer), "%s: %.1f C", profile.metrics[0].name, value);
+  } else {
+    snprintf(buffer, sizeof(buffer), "%s: --", profile.metrics[0].name);
+  }
+  Paint_DrawString_EN(10, 56, buffer, &Font16, BLACK, WHITE);
 
-  snprintf(buffer, sizeof(buffer), "Temp: %.1f C", obdValues.coolant_temp_c);
-  Paint_DrawString_EN(50, 80, buffer, &Font16, BLACK, WHITE);
-
-  snprintf(buffer, sizeof(buffer), "Fuel: %d%%", obdValues.fuel_level);
-  Paint_DrawString_EN(50, 100, buffer, &Font16, BLACK, WHITE);
+  if (profile.metricCount > 1) {
+    const uint8_t pid2 = profile.metrics[1].pid;
+    getPidMetricValue(pid2, &value, &valid);
+    if (valid) {
+      snprintf(buffer, sizeof(buffer), "%s: %.1f C", profile.metrics[1].name, value);
+    } else {
+      snprintf(buffer, sizeof(buffer), "%s: --", profile.metrics[1].name);
+    }
+    Paint_DrawString_EN(10, 78, buffer, &Font16, BLACK, WHITE);
+  }
 
   snprintf(buffer, sizeof(buffer), "Status: %s", getOBDStatusText());
-  Paint_DrawString_EN(20, 140, buffer, &Font12, BLACK, WHITE);
+  Paint_DrawString_EN(10, 120, buffer, &Font12, BLACK, WHITE);
+
+  snprintf(buffer, sizeof(buffer), "PIDs: %u  Swipe < >", (unsigned int)getPidScheduleCount());
+  Paint_DrawString_EN(10, 140, buffer, &Font12, BLACK, WHITE);
 
   LCD_1IN28_Display(BlackImage);
 }
@@ -62,7 +104,7 @@ void obdTask(void *pvParameters) {
   const uint32_t requestIntervalMs = 50;
   uint32_t lastRequestMs = 0;
   uint32_t lastStatusLogMs = 0;
-  size_t pidIndex = 0;
+  uint8_t nextPid = 0;
 
   Serial.println("[OBD] Task started");
   vTaskDelay(pdMS_TO_TICKS(500));
@@ -86,8 +128,9 @@ void obdTask(void *pvParameters) {
 
     // Send one PID request per interval (mirrors the original single-request cadence).
     if ((now - lastRequestMs) >= requestIntervalMs) {
-      sendObdFrame(kPidSchedule[pidIndex]);
-      pidIndex = (pidIndex + 1) % (sizeof(kPidSchedule) / sizeof(kPidSchedule[0]));
+      if (getNextScheduledPid(&nextPid)) {
+        sendObdFrame(nextPid);
+      }
       lastRequestMs = now;
     }
 
@@ -105,6 +148,23 @@ void displayTask(void *pvParameters) {
   Serial.println("[DISPLAY] Task started");
 
   while (1) {
+    if (touch.available()) {
+      const uint32_t now = millis();
+      if ((now - gLastSwipeMs) > 250) {
+        if (touch.data.gestureID == SWIPE_LEFT) {
+          const size_t profileCount = sizeof(kProfiles) / sizeof(kProfiles[0]);
+          const size_t next = (gCurrentProfileIndex + 1) % profileCount;
+          applyGaugeProfile(next);
+          gLastSwipeMs = now;
+        } else if (touch.data.gestureID == SWIPE_RIGHT) {
+          const size_t profileCount = sizeof(kProfiles) / sizeof(kProfiles[0]);
+          const size_t next = (gCurrentProfileIndex + profileCount - 1) % profileCount;
+          applyGaugeProfile(next);
+          gLastSwipeMs = now;
+        }
+      }
+    }
+
     renderDisplay();
 
     loopCount++;
@@ -125,6 +185,10 @@ void setup() {
   // Initialize OBD/CAN
   setupOBD();
   Serial.println("OBD initialized");
+
+  // Seed defaults and apply first gauge profile.
+  initPidScheduleDefaults();
+  applyGaugeProfile(0);
 
   // Initialize LCD and display buffer after OBD, matching the original project more closely.
   initLCD();

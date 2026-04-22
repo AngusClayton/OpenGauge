@@ -3,7 +3,7 @@
 UDOUBLE Imagesize = LCD_1IN28_HEIGHT * LCD_1IN28_WIDTH * 2;
 UWORD *BlackImage = NULL;
 
-static constexpr bool kEnableTouchInit = false;
+static constexpr bool kEnableTouchInit = true;
 
 void initPSRAM() {
   // Standalone PSRAM init - not currently used

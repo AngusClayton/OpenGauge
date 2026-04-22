@@ -1,9 +1,13 @@
 #include "pid_config.h"
 
+#include "pid_schedule.h"
+
 // Global OBD values - initialized to zero
 OBDValues obdValues = {
   .coolant_temp_c = 0,
   .coolant_temp_f = 0,
+  .intake_air_temp_c = 0,
+  .intake_air_temp_f = 0,
   .rpm = 0,
   .vehicle_speed_kmh = 0,
   .vehicle_speed_mph = 0,
@@ -19,9 +23,24 @@ OBDValues obdValues = {
 };
 
 void computeOBDValuesFromCache() {
-  float coolant_raw = getOBDRawValue(PID_COOLANT_TEMP, 1);
-  obdValues.coolant_temp_c = computeCoolantTemp((uint8_t)coolant_raw);
+  bool valid = false;
+  float coolant_from_metric = 0.0f;
+  if (getPidMetricValue(PID_COOLANT_TEMP, &coolant_from_metric, &valid) && valid) {
+    obdValues.coolant_temp_c = coolant_from_metric;
+  } else {
+    float coolant_raw = getOBDRawValue(PID_COOLANT_TEMP, 1);
+    obdValues.coolant_temp_c = computeCoolantTemp((uint8_t)coolant_raw);
+  }
   obdValues.coolant_temp_f = celsiusToFahrenheit(obdValues.coolant_temp_c);
+
+  float iat_from_metric = 0.0f;
+  if (getPidMetricValue(PID_INTAKE_AIR_TEMP, &iat_from_metric, &valid) && valid) {
+    obdValues.intake_air_temp_c = iat_from_metric;
+  } else {
+    float intake_air_raw = getOBDRawValue(PID_INTAKE_AIR_TEMP, 1);
+    obdValues.intake_air_temp_c = computeCoolantTemp((uint8_t)intake_air_raw);
+  }
+  obdValues.intake_air_temp_f = celsiusToFahrenheit(obdValues.intake_air_temp_c);
 
   uint16_t rpm_raw = (uint16_t)getOBDRawValue(PID_ENGINE_RPM, 2);
   uint8_t rpmA = (rpm_raw >> 8) & 0xFF;
