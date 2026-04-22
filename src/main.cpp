@@ -46,11 +46,19 @@ static constexpr float kIgnitionTimingDisplayMax = 40.0f;
 static constexpr UWORD kColdWaterColor = BLUE;
 static constexpr UWORD kNormalWaterColor = GBLUE;
 static constexpr UWORD kHotWaterColor = RED;
+static constexpr UWORD kShiftTrackColor = GRAY;
+static constexpr UWORD kShiftOrangeColor = 0xFD20;
 
 struct GaugeProfile {
   const char* title;
   const PidMetricConfig* metrics;
   size_t metricCount;
+};
+
+struct ShiftGearConfig {
+  uint8_t gearNumber;
+  float rpmPerKph;
+  uint16_t targetShiftRpm;
 };
 
 static const PidMetricConfig kBoostGaugeMetrics[] = {
@@ -70,18 +78,31 @@ static const PidMetricConfig kIgnitionGaugeMetrics[] = {
   {PID_IGNITION_TIMING, "Ign Timing", PID_FORMULA_LINEAR_A, 0.5f, -64.0f, 1, true},
 };
 
+static const PidMetricConfig kShiftLightGaugeMetrics[] = {
+  {PID_ENGINE_RPM, "RPM", PID_FORMULA_AB_DIV_4, 1.0f, 0.0f, 2, true},
+  {PID_VEHICLE_SPEED, "Speed", PID_FORMULA_RAW_A, 1.0f, 0.0f, 1, true},
+};
+
+static const ShiftGearConfig kShiftGearTable[] = {
+  {1, 115.4f, 6500},
+  {2, 73.2f, 6300},
+  {3, 49.2f, 6100},
+  {4, 36.6f, 6000},
+  {5, 28.6f, 5800},
+  {6, 24.0f, 0},
+};
+
 static const GaugeProfile kProfiles[] = {
   {"Gauge 1: Boost", kBoostGaugeMetrics, sizeof(kBoostGaugeMetrics) / sizeof(kBoostGaugeMetrics[0])},
   {"Gauge 2: Horsepower", kHorsepowerGaugeMetrics, sizeof(kHorsepowerGaugeMetrics) / sizeof(kHorsepowerGaugeMetrics[0])},
   {"Gauge 3: Lambda / AFR", kAfrGaugeMetrics, sizeof(kAfrGaugeMetrics) / sizeof(kAfrGaugeMetrics[0])},
   {"Gauge 4: Ignition Timing", kIgnitionGaugeMetrics, sizeof(kIgnitionGaugeMetrics) / sizeof(kIgnitionGaugeMetrics[0])},
+  {"Gauge 5: Shift Lights", kShiftLightGaugeMetrics, sizeof(kShiftLightGaugeMetrics) / sizeof(kShiftLightGaugeMetrics[0])},
 };
 
 static volatile size_t gCurrentProfileIndex = 0;
 static uint32_t gLastSwipeMs = 0;
 static uint32_t gStatusIssueSinceMs = 0;
-
-void drawCenteredTextFixed(UWORD y, const char* text, sFONT* font, UWORD fg, UWORD bg);
 
 void initAnalogInputs() {
   analogReadResolution(12);
@@ -115,19 +136,6 @@ void updateStatusIssueTimer(bool statusIssue) {
   } else {
     gStatusIssueSinceMs = 0;
   }
-}
-
-void drawStatusIfNeeded(UWORD y, UWORD color) {
-  const OBDLinkStatus status = getOBDLinkStatus();
-  const bool statusIssue = (status == OBD_STATUS_NO_BUS || status == OBD_STATUS_ERROR);
-  updateStatusIssueTimer(statusIssue);
-  if (!statusIssue || gStatusIssueSinceMs == 0 || (millis() - gStatusIssueSinceMs) < 5000) {
-    return;
-  }
-
-  char buffer[32];
-  snprintf(buffer, sizeof(buffer), "%s", getOBDStatusText());
-  drawCenteredTextFixed(y, buffer, &Font12, color, BLACK);
 }
 
 void applyGaugeProfile(size_t index) {
@@ -210,6 +218,78 @@ void drawCenteredTextFixed(UWORD y, const char* text, sFONT* font, UWORD fg, UWO
     x = 0;
   }
   drawTextFixed((UWORD)x, y, text, font, fg, bg);
+}
+
+void drawStatusIfNeeded(UWORD y, UWORD color) {
+  const OBDLinkStatus status = getOBDLinkStatus();
+  const bool statusIssue = (status == OBD_STATUS_NO_BUS || status == OBD_STATUS_ERROR);
+  updateStatusIssueTimer(statusIssue);
+  if (!statusIssue || gStatusIssueSinceMs == 0 || (millis() - gStatusIssueSinceMs) < 5000) {
+    return;
+  }
+
+  char buffer[32];
+  snprintf(buffer, sizeof(buffer), "%s", getOBDStatusText());
+  drawCenteredTextFixed(y, buffer, &Font12, color, BLACK);
+}
+
+int determineCurrentGear(float currentRpm, float currentKph) {
+  constexpr float kMinKph = 3.0f;
+  constexpr float kMinRpm = 800.0f;
+  constexpr float kRatioTolerance = 3.5f;
+
+  if (currentKph < kMinKph || currentRpm < kMinRpm) {
+    return 0;
+  }
+
+  const float currentRatio = currentRpm / currentKph;
+  const size_t gearCount = sizeof(kShiftGearTable) / sizeof(kShiftGearTable[0]);
+  for (size_t i = 0; i < gearCount; i++) {
+    if (fabsf(currentRatio - kShiftGearTable[i].rpmPerKph) <= kRatioTolerance) {
+      return (int)kShiftGearTable[i].gearNumber;
+    }
+  }
+
+  return -1;
+}
+
+uint16_t getTargetShiftRpmForGear(int gear) {
+  const size_t gearCount = sizeof(kShiftGearTable) / sizeof(kShiftGearTable[0]);
+  for (size_t i = 0; i < gearCount; i++) {
+    if ((int)kShiftGearTable[i].gearNumber == gear) {
+      return kShiftGearTable[i].targetShiftRpm;
+    }
+  }
+  return 0;
+}
+
+UWORD shiftLightColor(float rpm, uint16_t targetShiftRpm) {
+  if (targetShiftRpm == 0) {
+    return WHITE;
+  }
+
+  const float redThreshold = (float)targetShiftRpm;
+  const float orangeThreshold = redThreshold * 0.96f;
+  const float yellowThreshold = redThreshold * 0.90f;
+  if (rpm >= redThreshold) {
+    return RED;
+  }
+  if (rpm >= orangeThreshold) {
+    return kShiftOrangeColor;
+  }
+  if (rpm >= yellowThreshold) {
+    return YELLOW;
+  }
+  return WHITE;
+}
+
+float shiftArcSweep(float rpm, uint16_t targetShiftRpm) {
+  if (targetShiftRpm == 0) {
+    return 0.0f;
+  }
+
+  const float normalized = clampFloat(rpm / (float)targetShiftRpm, 0.0f, 1.0f);
+  return 240.0f * normalized;
 }
 
 void renderBoostGauge() {
@@ -357,6 +437,60 @@ void renderIgnitionGauge() {
   LCD_1IN28_Display(BlackImage);
 }
 
+void renderShiftLightGauge() {
+  Paint_Clear(BLACK);
+
+  const int cx = 120;
+  const int cy = 120;
+  const int arcRadius = 112;
+  const int arcThickness = 14;
+  const float arcStartClockDeg = 240.0f;
+  const float rpm = (float)obdValues.rpm;
+  const float speedKph = (float)obdValues.vehicle_speed_kmh;
+  const int gear = determineCurrentGear(rpm, speedKph);
+  const uint16_t targetShiftRpm = getTargetShiftRpmForGear(gear);
+  const float filledSweep = shiftArcSweep(rpm, targetShiftRpm);
+  const UWORD arcColor = shiftLightColor(rpm, targetShiftRpm);
+
+  drawClockArc(cx, cy, arcRadius, arcThickness, arcStartClockDeg, 240.0f, kShiftTrackColor);
+
+  if (filledSweep > 0.5f) {
+    drawClockArc(cx, cy, arcRadius, arcThickness, arcStartClockDeg, filledSweep, arcColor);
+  }
+
+  char buffer[64];
+  if (gear > 0) {
+    snprintf(buffer, sizeof(buffer), "%d", gear);
+  } else if (gear == 0) {
+    snprintf(buffer, sizeof(buffer), "N");
+  } else {
+    snprintf(buffer, sizeof(buffer), "-");
+  }
+  drawCenteredTextFixed(72, buffer, &Font24, WHITE, BLACK);
+  drawCenteredTextFixed(102, "GEAR", &Font12, GRAY, BLACK);
+
+  snprintf(buffer, sizeof(buffer), "RPM: %u", (unsigned int)obdValues.rpm);
+  drawCenteredTextFixed(136, buffer, &Font16, arcColor, BLACK);
+
+  snprintf(buffer, sizeof(buffer), "Speed: %u km/h", (unsigned int)obdValues.vehicle_speed_kmh);
+  drawCenteredTextFixed(160, buffer, &Font16, GBLUE, BLACK);
+
+  if (gear > 0 && targetShiftRpm > 0) {
+    snprintf(buffer, sizeof(buffer), "Shift @ %u", (unsigned int)targetShiftRpm);
+    drawCenteredTextFixed(184, buffer, &Font12, arcColor, BLACK);
+  } else if (gear == 6) {
+    drawCenteredTextFixed(184, "Top Gear", &Font12, GRAY, BLACK);
+  } else if (gear == 0) {
+    drawCenteredTextFixed(184, "Neutral / Clutch", &Font12, GRAY, BLACK);
+  } else {
+    drawCenteredTextFixed(184, "Gear Detecting", &Font12, GRAY, BLACK);
+  }
+
+  drawStatusIfNeeded(206, GRAY);
+
+  LCD_1IN28_Display(BlackImage);
+}
+
 void renderDisplay() {
   switch (gCurrentProfileIndex) {
     case 0:
@@ -370,6 +504,9 @@ void renderDisplay() {
       return;
     case 3:
       renderIgnitionGauge();
+      return;
+    case 4:
+      renderShiftLightGauge();
       return;
     default:
       renderBoostGauge();
