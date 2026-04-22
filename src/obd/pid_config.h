@@ -19,6 +19,7 @@
 #define PID_MAF_AIRFLOW        0x10   // Mass airflow sensor
 #define PID_THROTTLE_POS       0x11   // Throttle position
 #define PID_O2_VOLTAGE         0x14   // O2 sensor voltage
+#define PID_O2_SENSOR1_LAMBDA  0x24   // Wideband O2 sensor 1 equivalence ratio
 #define PID_ETHANOL_FUEL       0x52   // Ethanol fuel percentage
 
 // ============= COMPUTED VALUES STRUCT =============
@@ -42,6 +43,8 @@ struct OBDValues {
   float maf_airflow;         // Mass airflow (g/s)
   uint8_t throttle_pos;      // Throttle position (%)
   float o2_voltage;          // O2 sensor voltage (V)
+  float lambda_ratio;        // Wideband lambda ratio
+  float afr_gasoline;        // Air/fuel ratio referenced to gasoline stoich
   uint8_t ethanol_percent;   // Ethanol fuel (%)
 };
 
@@ -150,6 +153,21 @@ inline uint8_t computeThrottlePos(uint8_t rawA) {
  */
 inline float computeO2Voltage(uint8_t rawA) {
   return rawA / 200.0f;
+}
+
+/**
+ * Convert raw wideband lambda bytes to equivalence ratio.
+ * Formula: ((A*256)+B)/32768 = lambda
+ */
+inline float computeLambdaRatio(uint8_t rawA, uint8_t rawB) {
+  return ((rawA * 256) + rawB) / 32768.0f;
+}
+
+/**
+ * Convert lambda ratio to gasoline-referenced AFR.
+ */
+inline float computeGasolineAFR(float lambdaRatio) {
+  return lambdaRatio * 14.7f;
 }
 
 /**

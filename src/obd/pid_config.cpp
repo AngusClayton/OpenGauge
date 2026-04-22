@@ -19,6 +19,8 @@ OBDValues obdValues = {
   .maf_airflow = 0,
   .throttle_pos = 0,
   .o2_voltage = 0,
+  .lambda_ratio = 0,
+  .afr_gasoline = 0,
   .ethanol_percent = 0
 };
 
@@ -77,6 +79,17 @@ void computeOBDValuesFromCache() {
   float o2_raw = getOBDRawValue(PID_O2_VOLTAGE, 1);
   obdValues.o2_voltage = computeO2Voltage((uint8_t)o2_raw);
 
+  float lambda_from_metric = 0.0f;
+  if (getPidMetricValue(PID_O2_SENSOR1_LAMBDA, &lambda_from_metric, &valid) && valid) {
+    obdValues.lambda_ratio = lambda_from_metric;
+  } else {
+    uint16_t lambda_raw = (uint16_t)getOBDRawValue(PID_O2_SENSOR1_LAMBDA, 2);
+    uint8_t lambdaA = (lambda_raw >> 8) & 0xFF;
+    uint8_t lambdaB = lambda_raw & 0xFF;
+    obdValues.lambda_ratio = computeLambdaRatio(lambdaA, lambdaB);
+  }
+  obdValues.afr_gasoline = computeGasolineAFR(obdValues.lambda_ratio);
+
   float ethanol_raw = getOBDRawValue(PID_ETHANOL_FUEL, 1);
   obdValues.ethanol_percent = computeEthanolPercent((uint8_t)ethanol_raw);
 }
@@ -98,6 +111,8 @@ void printOBDValues() {
   Serial.printf("MAF Airflow: %.2f g/s\n", obdValues.maf_airflow);
   Serial.printf("Throttle: %d%%\n", obdValues.throttle_pos);
   Serial.printf("O2 Voltage: %.2f V\n", obdValues.o2_voltage);
+  Serial.printf("Lambda: %.3f\n", obdValues.lambda_ratio);
+  Serial.printf("AFR: %.2f\n", obdValues.afr_gasoline);
   Serial.printf("Ethanol: %d%%\n", obdValues.ethanol_percent);
   Serial.println("=====================\n");
 }

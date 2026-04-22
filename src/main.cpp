@@ -34,10 +34,15 @@ static volatile float gBoostSensorVoltage = 0.0f;
 static volatile float gBoostPressure = 0.0f;
 static volatile float gHorsepowerEstimate = 0.0f;
 
+static constexpr float kGasolineStoichAfr = 14.7f;
 static constexpr float kBoostDisplayMin = -10.0f;
 static constexpr float kBoostDisplayMax = 25.0f;
 static constexpr float kHorsepowerDisplayMin = 0.0f;
 static constexpr float kHorsepowerDisplayMax = 300.0f;
+static constexpr float kAfrDisplayMin = 10.0f;
+static constexpr float kAfrDisplayMax = 20.0f;
+static constexpr float kIgnitionTimingDisplayMin = -10.0f;
+static constexpr float kIgnitionTimingDisplayMax = 40.0f;
 static constexpr UWORD kColdWaterColor = BLUE;
 static constexpr UWORD kNormalWaterColor = GBLUE;
 static constexpr UWORD kHotWaterColor = RED;
@@ -48,28 +53,35 @@ struct GaugeProfile {
   size_t metricCount;
 };
 
-static const PidMetricConfig kGauge1Metrics[] = {
-  {PID_COOLANT_TEMP, "Coolant Temp", PID_FORMULA_A_MINUS_40, 1.0f, 0.0f, 1, true},
-};
-
-static const PidMetricConfig kGauge2Metrics[] = {
+static const PidMetricConfig kBoostGaugeMetrics[] = {
   {PID_COOLANT_TEMP, "Coolant Temp", PID_FORMULA_A_MINUS_40, 1.0f, 0.0f, 1, true},
   {PID_INTAKE_AIR_TEMP, "Intake Air Temp", PID_FORMULA_A_MINUS_40, 1.0f, 0.0f, 1, true},
 };
 
-static const PidMetricConfig kGauge3Metrics[] = {
+static const PidMetricConfig kHorsepowerGaugeMetrics[] = {
   {PID_MAF_AIRFLOW, "MAF", PID_FORMULA_AB_DIV_100, 1.0f, 0.0f, 2, true},
 };
 
+static const PidMetricConfig kAfrGaugeMetrics[] = {
+  {PID_O2_SENSOR1_LAMBDA, "Lambda", PID_FORMULA_LINEAR_AB, 1.0f / 32768.0f, 0.0f, 2, true},
+};
+
+static const PidMetricConfig kIgnitionGaugeMetrics[] = {
+  {PID_IGNITION_TIMING, "Ign Timing", PID_FORMULA_LINEAR_A, 0.5f, -64.0f, 1, true},
+};
+
 static const GaugeProfile kProfiles[] = {
-  {"Gauge 1: Coolant", kGauge1Metrics, sizeof(kGauge1Metrics) / sizeof(kGauge1Metrics[0])},
-  {"Gauge 2: Coolant+IAT", kGauge2Metrics, sizeof(kGauge2Metrics) / sizeof(kGauge2Metrics[0])},
-  {"Gauge 3: Horsepower", kGauge3Metrics, sizeof(kGauge3Metrics) / sizeof(kGauge3Metrics[0])},
+  {"Gauge 1: Boost", kBoostGaugeMetrics, sizeof(kBoostGaugeMetrics) / sizeof(kBoostGaugeMetrics[0])},
+  {"Gauge 2: Horsepower", kHorsepowerGaugeMetrics, sizeof(kHorsepowerGaugeMetrics) / sizeof(kHorsepowerGaugeMetrics[0])},
+  {"Gauge 3: Lambda / AFR", kAfrGaugeMetrics, sizeof(kAfrGaugeMetrics) / sizeof(kAfrGaugeMetrics[0])},
+  {"Gauge 4: Ignition Timing", kIgnitionGaugeMetrics, sizeof(kIgnitionGaugeMetrics) / sizeof(kIgnitionGaugeMetrics[0])},
 };
 
 static volatile size_t gCurrentProfileIndex = 0;
 static uint32_t gLastSwipeMs = 0;
-static uint32_t gGauge2StatusIssueSinceMs = 0;
+static uint32_t gStatusIssueSinceMs = 0;
+
+void drawCenteredTextFixed(UWORD y, const char* text, sFONT* font, UWORD fg, UWORD bg);
 
 void initAnalogInputs() {
   analogReadResolution(12);
@@ -93,6 +105,29 @@ void updateAnalogSensors() {
 
 void updateDerivedValues() {
   gHorsepowerEstimate = obdValues.maf_airflow * 1.25f;
+}
+
+void updateStatusIssueTimer(bool statusIssue) {
+  if (statusIssue) {
+    if (gStatusIssueSinceMs == 0) {
+      gStatusIssueSinceMs = millis();
+    }
+  } else {
+    gStatusIssueSinceMs = 0;
+  }
+}
+
+void drawStatusIfNeeded(UWORD y, UWORD color) {
+  const OBDLinkStatus status = getOBDLinkStatus();
+  const bool statusIssue = (status == OBD_STATUS_NO_BUS || status == OBD_STATUS_ERROR);
+  updateStatusIssueTimer(statusIssue);
+  if (!statusIssue || gStatusIssueSinceMs == 0 || (millis() - gStatusIssueSinceMs) < 5000) {
+    return;
+  }
+
+  char buffer[32];
+  snprintf(buffer, sizeof(buffer), "%s", getOBDStatusText());
+  drawCenteredTextFixed(y, buffer, &Font12, color, BLACK);
 }
 
 void applyGaugeProfile(size_t index) {
@@ -177,7 +212,7 @@ void drawCenteredTextFixed(UWORD y, const char* text, sFONT* font, UWORD fg, UWO
   drawTextFixed((UWORD)x, y, text, font, fg, bg);
 }
 
-void renderGauge2() {
+void renderBoostGauge() {
   Paint_Clear(BLACK);
 
   const int cx = 120;
@@ -214,25 +249,12 @@ void renderGauge2() {
   snprintf(buffer, sizeof(buffer), "AIT: %.0fC", (double)obdValues.intake_air_temp_c);
   drawCenteredTextFixed(168, buffer, &Font16, GBLUE, BLACK);
 
-  const OBDLinkStatus status = getOBDLinkStatus();
-  const bool statusIssue = (status == OBD_STATUS_NO_BUS || status == OBD_STATUS_ERROR);
-  if (statusIssue) {
-    if (gGauge2StatusIssueSinceMs == 0) {
-      gGauge2StatusIssueSinceMs = millis();
-    }
-  } else {
-    gGauge2StatusIssueSinceMs = 0;
-  }
-
-  if (statusIssue && gGauge2StatusIssueSinceMs != 0 && (millis() - gGauge2StatusIssueSinceMs) >= 5000) {
-    snprintf(buffer, sizeof(buffer), "%s", getOBDStatusText());
-    drawCenteredTextFixed(194, buffer, &Font12, GRAY, BLACK);
-  }
+  drawStatusIfNeeded(194, GRAY);
 
   LCD_1IN28_Display(BlackImage);
 }
 
-void renderGauge3() {
+void renderHorsepowerGauge() {
   Paint_Clear(BLACK);
 
   const int cx = 120;
@@ -257,79 +279,102 @@ void renderGauge3() {
   drawCenteredTextFixed(84, buffer, &Font24, WHITE, BLACK);
   drawCenteredTextFixed(112, "HP", &Font16, WHITE, BLACK);
   drawCenteredTextFixed(146, "MAF x 1.25", &Font12, GBLUE, BLACK);
+  snprintf(buffer, sizeof(buffer), "MAF: %.1f g/s", (double)obdValues.maf_airflow);
+  drawCenteredTextFixed(168, buffer, &Font16, GBLUE, BLACK);
 
-  const OBDLinkStatus status = getOBDLinkStatus();
-  const bool statusIssue = (status == OBD_STATUS_NO_BUS || status == OBD_STATUS_ERROR);
-  if (statusIssue) {
-    if (gGauge2StatusIssueSinceMs == 0) {
-      gGauge2StatusIssueSinceMs = millis();
-    }
-  } else {
-    gGauge2StatusIssueSinceMs = 0;
+  drawStatusIfNeeded(194, GRAY);
+
+  LCD_1IN28_Display(BlackImage);
+}
+
+void renderAfrGauge() {
+  Paint_Clear(BLACK);
+
+  const int cx = 120;
+  const int cy = 120;
+  const int arcRadius = 112;
+  const int arcThickness = 14;
+  const float arcStartClockDeg = 240.0f;
+  const float arcSweepClockDeg = 240.0f;
+
+  const float afr = obdValues.afr_gasoline;
+  const float normalized = (clampFloat(afr, kAfrDisplayMin, kAfrDisplayMax) - kAfrDisplayMin) /
+                           (kAfrDisplayMax - kAfrDisplayMin);
+  const float filledSweep = arcSweepClockDeg * normalized;
+
+  if (filledSweep > 0.5f) {
+    drawClockArc(cx, cy, arcRadius, arcThickness, arcStartClockDeg, filledSweep, WHITE);
   }
 
-  if (statusIssue && gGauge2StatusIssueSinceMs != 0 && (millis() - gGauge2StatusIssueSinceMs) >= 5000) {
-    snprintf(buffer, sizeof(buffer), "%s", getOBDStatusText());
-    drawCenteredTextFixed(194, buffer, &Font12, GRAY, BLACK);
+  char buffer[64];
+  snprintf(buffer, sizeof(buffer), "%.2f", (double)afr);
+  drawCenteredTextFixed(80, buffer, &Font24, WHITE, BLACK);
+  drawCenteredTextFixed(108, "AFR", &Font16, WHITE, BLACK);
+
+  snprintf(buffer, sizeof(buffer), "Lambda: %.3f", (double)obdValues.lambda_ratio);
+  drawCenteredTextFixed(144, buffer, &Font16, GBLUE, BLACK);
+
+  snprintf(buffer, sizeof(buffer), "Stoich: %.1f", (double)kGasolineStoichAfr);
+  drawCenteredTextFixed(168, buffer, &Font12, GRAY, BLACK);
+
+  drawStatusIfNeeded(194, GRAY);
+
+  LCD_1IN28_Display(BlackImage);
+}
+
+void renderIgnitionGauge() {
+  Paint_Clear(BLACK);
+
+  const int cx = 120;
+  const int cy = 120;
+  const int arcRadius = 112;
+  const int arcThickness = 14;
+  const float arcStartClockDeg = 240.0f;
+  const float arcSweepClockDeg = 240.0f;
+
+  const float timing = obdValues.ignition_timing;
+  const float normalized = (clampFloat(timing, kIgnitionTimingDisplayMin, kIgnitionTimingDisplayMax) -
+                            kIgnitionTimingDisplayMin) /
+                           (kIgnitionTimingDisplayMax - kIgnitionTimingDisplayMin);
+  const float filledSweep = arcSweepClockDeg * normalized;
+
+  if (filledSweep > 0.5f) {
+    drawClockArc(cx, cy, arcRadius, arcThickness, arcStartClockDeg, filledSweep, WHITE);
   }
+
+  char buffer[64];
+  snprintf(buffer, sizeof(buffer), "%.1f", (double)timing);
+  drawCenteredTextFixed(80, buffer, &Font24, WHITE, BLACK);
+  drawCenteredTextFixed(108, "IGN DEG", &Font16, WHITE, BLACK);
+
+  snprintf(buffer, sizeof(buffer), "RPM: %u", (unsigned int)obdValues.rpm);
+  drawCenteredTextFixed(144, buffer, &Font16, GBLUE, BLACK);
+
+  drawCenteredTextFixed(168, "BTDC", &Font12, GRAY, BLACK);
+
+  drawStatusIfNeeded(194, GRAY);
 
   LCD_1IN28_Display(BlackImage);
 }
 
 void renderDisplay() {
-  if (gCurrentProfileIndex == 1) {
-    renderGauge2();
-    return;
+  switch (gCurrentProfileIndex) {
+    case 0:
+      renderBoostGauge();
+      return;
+    case 1:
+      renderHorsepowerGauge();
+      return;
+    case 2:
+      renderAfrGauge();
+      return;
+    case 3:
+      renderIgnitionGauge();
+      return;
+    default:
+      renderBoostGauge();
+      return;
   }
-
-  if (gCurrentProfileIndex == 2) {
-    renderGauge3();
-    return;
-  }
-
-  Paint_Clear(WHITE);
-
-  char buffer[100];
-  const GaugeProfile& profile = kProfiles[gCurrentProfileIndex];
-
-  Paint_DrawString_EN(10, 10, "32 Gauge", &Font20, BLACK, WHITE);
-  Paint_DrawString_EN(10, 34, profile.title, &Font12, BLACK, WHITE);
-
-  float value = 0.0f;
-  bool valid = false;
-
-  const uint8_t pid1 = profile.metrics[0].pid;
-  getPidMetricValue(pid1, &value, &valid);
-  if (valid) {
-    snprintf(buffer, sizeof(buffer), "%s: %.1f C", profile.metrics[0].name, value);
-  } else {
-    snprintf(buffer, sizeof(buffer), "%s: --", profile.metrics[0].name);
-  }
-  Paint_DrawString_EN(10, 56, buffer, &Font16, BLACK, WHITE);
-
-  if (profile.metricCount > 1) {
-    const uint8_t pid2 = profile.metrics[1].pid;
-    getPidMetricValue(pid2, &value, &valid);
-    if (valid) {
-      snprintf(buffer, sizeof(buffer), "%s: %.1f C", profile.metrics[1].name, value);
-    } else {
-      snprintf(buffer, sizeof(buffer), "%s: --", profile.metrics[1].name);
-    }
-    Paint_DrawString_EN(10, 78, buffer, &Font16, BLACK, WHITE);
-  }
-
-  if (gCurrentProfileIndex == 1) {
-    snprintf(buffer, sizeof(buffer), "Boost: %.2f", (double)gBoostPressure);
-    Paint_DrawString_EN(10, 100, buffer, &Font16, BLACK, WHITE);
-  }
-
-  snprintf(buffer, sizeof(buffer), "Status: %s", getOBDStatusText());
-  Paint_DrawString_EN(10, 122, buffer, &Font12, BLACK, WHITE);
-
-  snprintf(buffer, sizeof(buffer), "PIDs: %u  Swipe < >", (unsigned int)getPidScheduleCount());
-  Paint_DrawString_EN(10, 142, buffer, &Font12, BLACK, WHITE);
-
-  LCD_1IN28_Display(BlackImage);
 }
 
 void obdTask(void *pvParameters) {
