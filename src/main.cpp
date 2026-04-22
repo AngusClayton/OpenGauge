@@ -18,6 +18,20 @@ CST816S touch(6, 7, 13, 5);  // sda, scl, rst, irq
 TaskHandle_t obdTaskHandle = NULL;
 TaskHandle_t displayTaskHandle = NULL;
 
+// Analog sensor inputs (GPIO17 now, GPIO18 reserved for later)
+static constexpr uint8_t kAnalogBoostPin = 17;
+static constexpr uint8_t kAnalogSparePin = 18;
+static constexpr float kAdcReferenceVolts = 3.3f;
+static constexpr float kAdcDividerCompensation = 2.0f; // 50/50 divider -> actual sensor voltage is 2x ADC input
+
+// Boost pressure conversion from compensated sensor voltage.
+// Adjust these later for your specific sensor calibration.
+static constexpr float kBoostMultiplier = 10.0f;
+static constexpr float kBoostOffset = -10.0f;
+
+static volatile float gBoostSensorVoltage = 0.0f;
+static volatile float gBoostPressure = 0.0f;
+
 struct GaugeProfile {
   const char* title;
   const PidMetricConfig* metrics;
@@ -40,6 +54,26 @@ static const GaugeProfile kProfiles[] = {
 
 static volatile size_t gCurrentProfileIndex = 0;
 static uint32_t gLastSwipeMs = 0;
+
+void initAnalogInputs() {
+  analogReadResolution(12);
+  analogSetPinAttenuation(kAnalogBoostPin, ADC_11db); // >2.5V range at ADC pin
+  analogSetPinAttenuation(kAnalogSparePin, ADC_11db); // reserve pin 18 for future sensor
+
+  pinMode(kAnalogBoostPin, INPUT);
+  pinMode(kAnalogSparePin, INPUT);
+
+  Serial.println("[ANALOG] ADC initialized on GPIO17/GPIO18");
+}
+
+void updateAnalogSensors() {
+  const int raw = analogRead(kAnalogBoostPin);
+  const float adcInputVolts = (raw / 4095.0f) * kAdcReferenceVolts;
+  const float sensorVolts = adcInputVolts * kAdcDividerCompensation;
+
+  gBoostSensorVoltage = sensorVolts;
+  gBoostPressure = (sensorVolts * kBoostMultiplier) + kBoostOffset;
+}
 
 void applyGaugeProfile(size_t index) {
   const size_t profileCount = sizeof(kProfiles) / sizeof(kProfiles[0]);
@@ -90,11 +124,16 @@ void renderDisplay() {
     Paint_DrawString_EN(10, 78, buffer, &Font16, BLACK, WHITE);
   }
 
+  if (gCurrentProfileIndex == 1) {
+    snprintf(buffer, sizeof(buffer), "Boost: %.2f", (double)gBoostPressure);
+    Paint_DrawString_EN(10, 100, buffer, &Font16, BLACK, WHITE);
+  }
+
   snprintf(buffer, sizeof(buffer), "Status: %s", getOBDStatusText());
-  Paint_DrawString_EN(10, 120, buffer, &Font12, BLACK, WHITE);
+  Paint_DrawString_EN(10, 122, buffer, &Font12, BLACK, WHITE);
 
   snprintf(buffer, sizeof(buffer), "PIDs: %u  Swipe < >", (unsigned int)getPidScheduleCount());
-  Paint_DrawString_EN(10, 140, buffer, &Font12, BLACK, WHITE);
+  Paint_DrawString_EN(10, 142, buffer, &Font12, BLACK, WHITE);
 
   LCD_1IN28_Display(BlackImage);
 }
@@ -102,7 +141,9 @@ void renderDisplay() {
 void obdTask(void *pvParameters) {
   const TickType_t xLoopDelay = pdMS_TO_TICKS(10);
   const uint32_t requestIntervalMs = 50;
+  const uint32_t analogIntervalMs = 20;
   uint32_t lastRequestMs = 0;
+  uint32_t lastAnalogMs = 0;
   uint32_t lastStatusLogMs = 0;
   uint8_t nextPid = 0;
 
@@ -132,6 +173,11 @@ void obdTask(void *pvParameters) {
         sendObdFrame(nextPid);
       }
       lastRequestMs = now;
+    }
+
+    if ((now - lastAnalogMs) >= analogIntervalMs) {
+      updateAnalogSensors();
+      lastAnalogMs = now;
     }
 
     // Compute display values from whatever is currently cached.
@@ -189,6 +235,9 @@ void setup() {
   // Seed defaults and apply first gauge profile.
   initPidScheduleDefaults();
   applyGaugeProfile(0);
+
+  initAnalogInputs();
+  updateAnalogSensors();
 
   // Initialize LCD and display buffer after OBD, matching the original project more closely.
   initLCD();
