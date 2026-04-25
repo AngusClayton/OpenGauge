@@ -20,15 +20,10 @@ TaskHandle_t obdTaskHandle = NULL;
 TaskHandle_t displayTaskHandle = NULL;
 
 // Analog sensor inputs (GPIO17 now, GPIO18 reserved for later)
-static constexpr uint8_t kAnalogBoostPin = 17;
-static constexpr uint8_t kAnalogSparePin = 18;
+static constexpr uint8_t kAnalogBoostPin = 18;
+static constexpr uint8_t kAnalogSparePin = 17;
 static constexpr float kAdcReferenceVolts = 3.3f;
 static constexpr float kAdcDividerCompensation = 2.0f; // 50/50 divider -> actual sensor voltage is 2x ADC input
-
-// Boost pressure conversion from compensated sensor voltage.
-// Adjust these later for your specific sensor calibration.
-static constexpr float kBoostMultiplier = 10.0f;
-static constexpr float kBoostOffset = -10.0f;
 
 static volatile float gBoostSensorVoltage = 0.0f;
 static volatile float gBoostPressure = 0.0f;
@@ -121,7 +116,8 @@ void updateAnalogSensors() {
   const float sensorVolts = adcInputVolts * kAdcDividerCompensation;
 
   gBoostSensorVoltage = sensorVolts;
-  gBoostPressure = (sensorVolts * kBoostMultiplier) + kBoostOffset;
+  // Display the actual sensor input voltage (compensated for the 2x divider).
+  gBoostPressure = sensorVolts;
 }
 
 void updateDerivedValues() {
