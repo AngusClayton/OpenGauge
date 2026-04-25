@@ -98,6 +98,8 @@ static const GaugeProfile kProfiles[] = {
 static volatile size_t gCurrentProfileIndex = 0;
 static uint32_t gLastSwipeMs = 0;
 static uint32_t gStatusIssueSinceMs = 0;
+static int gLastDetectedGear = 0;
+static uint32_t gLastDetectedGearMs = 0;
 
 void initAnalogInputs() {
   analogReadResolution(12);
@@ -231,19 +233,40 @@ void drawStatusIfNeeded(UWORD y, UWORD color) {
 
 int determineCurrentGear(float currentRpm, float currentKph) {
   constexpr float kMinKph = 3.0f;
-  constexpr float kMinRpm = 800.0f;
-  constexpr float kRatioTolerance = 3.5f;
+  constexpr float kMinRpm = 850.0f;
+  constexpr float kRatioToleranceBase = 2.5f;
+  constexpr float kKphQuantizationHalfStep = 0.5f;
+  constexpr float kQuantizationToleranceCap = 18.0f;
+  constexpr uint32_t kGearHoldMs = 350;
 
   if (currentKph < kMinKph || currentRpm < kMinRpm) {
+    gLastDetectedGear = 0;
     return 0;
   }
 
   const float currentRatio = currentRpm / currentKph;
+  const float quantizationTolerance = (currentRpm * kKphQuantizationHalfStep) / (currentKph * currentKph);
+  const float dynamicTolerance = kRatioToleranceBase + clampFloat(quantizationTolerance, 0.0f, kQuantizationToleranceCap);
+
   const size_t gearCount = sizeof(kShiftGearTable) / sizeof(kShiftGearTable[0]);
+  int bestGear = -1;
+  float bestDiff = 1e9f;
   for (size_t i = 0; i < gearCount; i++) {
-    if (fabsf(currentRatio - kShiftGearTable[i].rpmPerKph) <= kRatioTolerance) {
-      return (int)kShiftGearTable[i].gearNumber;
+    const float diff = fabsf(currentRatio - kShiftGearTable[i].rpmPerKph);
+    if (diff <= dynamicTolerance && diff < bestDiff) {
+      bestDiff = diff;
+      bestGear = (int)kShiftGearTable[i].gearNumber;
     }
+  }
+
+  if (bestGear > 0) {
+    gLastDetectedGear = bestGear;
+    gLastDetectedGearMs = millis();
+    return bestGear;
+  }
+
+  if (gLastDetectedGear > 0 && (millis() - gLastDetectedGearMs) <= kGearHoldMs) {
+    return gLastDetectedGear;
   }
 
   return -1;
