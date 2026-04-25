@@ -145,32 +145,43 @@ void updateAnalogSensors() {
   gBoostPressure = sensorVolts;
 }
 
+void calibrateImuZero() {
+  if (!gImuReady) {
+    return;
+  }
+
+  constexpr uint32_t kSettleDelayMs = 400;
+  constexpr int kSamples = 160;
+
+  // Let mounting vibrations settle before sampling zero offsets.
+  delay(kSettleDelayMs);
+
+  float longitudinalSum = 0.0f;
+  float lateralSum = 0.0f;
+  for (int i = 0; i < kSamples; i++) {
+    float accMs2[3] = {0.0f, 0.0f, 0.0f};
+    QMI8658_read_acc_xyz(accMs2);
+
+    longitudinalSum += (accMs2[kLongitudinalAxis] / kOneGMs2) * kLongitudinalSign;
+    lateralSum += (accMs2[kLateralAxis] / kOneGMs2) * kLateralSign;
+    delay(4);
+  }
+
+  gLongitudinalOffsetG = longitudinalSum / (float)kSamples;
+  gLateralOffsetG = lateralSum / (float)kSamples;
+  gLongitudinalG = 0.0f;
+  gLateralG = 0.0f;
+
+  Serial.printf("[IMU] Zero calibrated lat=%0.3f long=%0.3f\n",
+                (double)gLateralOffsetG,
+                (double)gLongitudinalOffsetG);
+}
+
 void initImuSensor() {
   gImuReady = (QMI8658_init() != 0);
   if (gImuReady) {
     Serial.println("[IMU] QMI8658 initialized");
-
-    // Capture a stationary baseline so displayed lat/long G are near zero at rest.
-    constexpr int kSamples = 120;
-    float longitudinalSum = 0.0f;
-    float lateralSum = 0.0f;
-    for (int i = 0; i < kSamples; i++) {
-      float accMs2[3] = {0.0f, 0.0f, 0.0f};
-      QMI8658_read_acc_xyz(accMs2);
-
-      longitudinalSum += (accMs2[kLongitudinalAxis] / kOneGMs2) * kLongitudinalSign;
-      lateralSum += (accMs2[kLateralAxis] / kOneGMs2) * kLateralSign;
-      delay(4);
-    }
-
-    gLongitudinalOffsetG = longitudinalSum / (float)kSamples;
-    gLateralOffsetG = lateralSum / (float)kSamples;
-    gLongitudinalG = 0.0f;
-    gLateralG = 0.0f;
-
-    Serial.printf("[IMU] Zero offsets lat=%0.3f long=%0.3f\n",
-                  (double)gLateralOffsetG,
-                  (double)gLongitudinalOffsetG);
+    calibrateImuZero();
   } else {
     Serial.println("[IMU] QMI8658 init failed");
   }
