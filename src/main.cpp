@@ -5,6 +5,7 @@
 #include "Display/fonts.h"
 #include "Display/LCD_1in28.h"
 #include "Display/CST816S.h"
+#include "Display/QMI8658.h"
 #include "obd/obd.h"
 #include "obd/pid_config.h"
 #include "obd/pid_schedule.h"
@@ -24,10 +25,26 @@ static constexpr uint8_t kAnalogBoostPin = 18;
 static constexpr uint8_t kAnalogSparePin = 17;
 static constexpr float kAdcReferenceVolts = 3.3f;
 static constexpr float kAdcDividerCompensation = 2.0f; // 50/50 divider -> actual sensor voltage is 2x ADC input
+static constexpr float kOneGMs2 = 9.807f;
+static constexpr float kImuFilterAlpha = 0.25f;
+static constexpr float kGmeterDisplayRange = 1.5f;
+
+// Axis mapping for car orientation.
+// "Top" of the QMI8658 package points to the front of the car.
+// Adjust signs if polarity appears inverted in vehicle testing.
+static constexpr int kLongitudinalAxis = 2;
+static constexpr int kLateralAxis = 1;
+static constexpr float kLongitudinalSign = 1.0f;
+static constexpr float kLateralSign = 1.0f;
 
 static volatile float gBoostSensorVoltage = 0.0f;
 static volatile float gBoostPressure = 0.0f;
 static volatile float gHorsepowerEstimate = 0.0f;
+static volatile float gLongitudinalG = 0.0f;
+static volatile float gLateralG = 0.0f;
+static volatile float gLongitudinalOffsetG = 0.0f;
+static volatile float gLateralOffsetG = 0.0f;
+static volatile bool gImuReady = false;
 
 static constexpr float kGasolineStoichAfr = 14.7f;
 static constexpr float kBoostDisplayMin = -10.0f;
@@ -78,6 +95,11 @@ static const PidMetricConfig kShiftLightGaugeMetrics[] = {
   {PID_VEHICLE_SPEED, "Speed", PID_FORMULA_RAW_A, 1.0f, 0.0f, 1, true},
 };
 
+static const PidMetricConfig kGmeterGaugeMetrics[] = {
+  {PID_ENGINE_RPM, "RPM", PID_FORMULA_AB_DIV_4, 1.0f, 0.0f, 2, true},
+  {PID_VEHICLE_SPEED, "Speed", PID_FORMULA_RAW_A, 1.0f, 0.0f, 1, true},
+};
+
 static const ShiftGearConfig kShiftGearTable[] = {
   {1, 115.4f, 6500},
   {2, 73.2f, 6300},
@@ -93,6 +115,7 @@ static const GaugeProfile kProfiles[] = {
   {"Gauge 3: Lambda / AFR", kAfrGaugeMetrics, sizeof(kAfrGaugeMetrics) / sizeof(kAfrGaugeMetrics[0])},
   {"Gauge 4: Ignition Timing", kIgnitionGaugeMetrics, sizeof(kIgnitionGaugeMetrics) / sizeof(kIgnitionGaugeMetrics[0])},
   {"Gauge 5: Shift Lights", kShiftLightGaugeMetrics, sizeof(kShiftLightGaugeMetrics) / sizeof(kShiftLightGaugeMetrics[0])},
+  {"Gauge 6: G Meter", kGmeterGaugeMetrics, sizeof(kGmeterGaugeMetrics) / sizeof(kGmeterGaugeMetrics[0])},
 };
 
 static volatile size_t gCurrentProfileIndex = 0;
@@ -120,6 +143,52 @@ void updateAnalogSensors() {
   gBoostSensorVoltage = sensorVolts;
   // Display the actual sensor input voltage (compensated for the 2x divider).
   gBoostPressure = sensorVolts;
+}
+
+void initImuSensor() {
+  gImuReady = (QMI8658_init() != 0);
+  if (gImuReady) {
+    Serial.println("[IMU] QMI8658 initialized");
+
+    // Capture a stationary baseline so displayed lat/long G are near zero at rest.
+    constexpr int kSamples = 120;
+    float longitudinalSum = 0.0f;
+    float lateralSum = 0.0f;
+    for (int i = 0; i < kSamples; i++) {
+      float accMs2[3] = {0.0f, 0.0f, 0.0f};
+      QMI8658_read_acc_xyz(accMs2);
+
+      longitudinalSum += (accMs2[kLongitudinalAxis] / kOneGMs2) * kLongitudinalSign;
+      lateralSum += (accMs2[kLateralAxis] / kOneGMs2) * kLateralSign;
+      delay(4);
+    }
+
+    gLongitudinalOffsetG = longitudinalSum / (float)kSamples;
+    gLateralOffsetG = lateralSum / (float)kSamples;
+    gLongitudinalG = 0.0f;
+    gLateralG = 0.0f;
+
+    Serial.printf("[IMU] Zero offsets lat=%0.3f long=%0.3f\n",
+                  (double)gLateralOffsetG,
+                  (double)gLongitudinalOffsetG);
+  } else {
+    Serial.println("[IMU] QMI8658 init failed");
+  }
+}
+
+void updateImuSensors() {
+  if (!gImuReady) {
+    return;
+  }
+
+  float accMs2[3] = {0.0f, 0.0f, 0.0f};
+  QMI8658_read_acc_xyz(accMs2);
+
+  const float longitudinalRawG = ((accMs2[kLongitudinalAxis] / kOneGMs2) * kLongitudinalSign) - gLongitudinalOffsetG;
+  const float lateralRawG = ((accMs2[kLateralAxis] / kOneGMs2) * kLateralSign) - gLateralOffsetG;
+
+  gLongitudinalG += kImuFilterAlpha * (longitudinalRawG - gLongitudinalG);
+  gLateralG += kImuFilterAlpha * (lateralRawG - gLateralG);
 }
 
 void updateDerivedValues() {
@@ -510,6 +579,50 @@ void renderShiftLightGauge() {
   LCD_1IN28_Display(BlackImage);
 }
 
+void renderGmeterGauge() {
+  Paint_Clear(BLACK);
+
+  const int cx = 120;
+  const int cy = 120;
+  const int radius = 72;
+  const int dotRadius = 7;
+  const int maxDotTravel = radius - dotRadius - 2;
+
+  Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)radius, GRAY, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
+  Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)(radius / 2), GRAY, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
+  Paint_DrawLine((UWORD)(cx - radius), (UWORD)cy, (UWORD)(cx + radius), (UWORD)cy, GRAY, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
+  Paint_DrawLine((UWORD)cx, (UWORD)(cy - radius), (UWORD)cx, (UWORD)(cy + radius), GRAY, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
+  Paint_DrawCircle((UWORD)cx, (UWORD)cy, 2, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
+
+  if (!gImuReady) {
+    drawCenteredTextFixed(100, "IMU OFFLINE", &Font16, RED, BLACK);
+    drawCenteredTextFixed(184, "Check QMI8658 wiring", &Font12, GRAY, BLACK);
+    LCD_1IN28_Display(BlackImage);
+    return;
+  }
+
+  const float lateral = clampFloat(gLateralG, -kGmeterDisplayRange, kGmeterDisplayRange);
+  const float longitudinal = clampFloat(gLongitudinalG, -kGmeterDisplayRange, kGmeterDisplayRange);
+
+  const int dotX = cx + (int)((lateral / kGmeterDisplayRange) * (float)maxDotTravel);
+  const int dotY = cy - (int)((longitudinal / kGmeterDisplayRange) * (float)maxDotTravel);
+  Paint_DrawCircle((UWORD)dotX, (UWORD)dotY, (UWORD)dotRadius, RED, DOT_PIXEL_1X1, DRAW_FILL_FULL);
+
+  char buffer[64];
+  snprintf(buffer, sizeof(buffer), "Lat: %+0.2fg", (double)gLateralG);
+  drawCenteredTextFixed(198, buffer, &Font12, GBLUE, BLACK);
+
+  snprintf(buffer, sizeof(buffer), "Long: %+0.2fg", (double)gLongitudinalG);
+  drawCenteredTextFixed(212, buffer, &Font12, WHITE, BLACK);
+
+  snprintf(buffer, sizeof(buffer), "Forward ^");
+  drawCenteredTextFixed(226, buffer, &Font12, GRAY, BLACK);
+
+  drawStatusIfNeeded(16, GRAY);
+
+  LCD_1IN28_Display(BlackImage);
+}
+
 void renderDisplay() {
   switch (gCurrentProfileIndex) {
     case 0:
@@ -526,6 +639,9 @@ void renderDisplay() {
       return;
     case 4:
       renderShiftLightGauge();
+      return;
+    case 5:
+      renderGmeterGauge();
       return;
     default:
       renderBoostGauge();
@@ -572,6 +688,7 @@ void obdTask(void *pvParameters) {
 
     if ((now - lastAnalogMs) >= analogIntervalMs) {
       updateAnalogSensors();
+      updateImuSensors();
       lastAnalogMs = now;
     }
 
@@ -638,6 +755,8 @@ void setup() {
   // Initialize LCD and display buffer after OBD, matching the original project more closely.
   initLCD();
   Serial.println("LCD initialized");
+
+  initImuSensor();
 
   renderDisplay();
 
