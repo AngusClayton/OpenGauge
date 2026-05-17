@@ -142,29 +142,25 @@ void updateAnalogSensors() {
 
   gBoostSensorVoltage = sensorVolts;
 
-  // Conversion: Output (V) = -0.0325 * Vacuum (inHg)
-  // Vacuum (inHg) = -V / 0.0325
-  // For positive pressure (boost), convert to PSI (1 PSI = 2.03602 inHg)
-  float boostPsi = 0.0f;
-  float boostInHg = 0.0f;
-  const float kAtmospherePsi = 14.7f;
-  if (sensorVolts < 0.0f) {
-    // Should not happen, but clamp to zero
-    gBoostPressure = 0.0f;
-  } else if (sensorVolts < 0.01f) {
-    // Treat as atmospheric (zero boost/vacuum)
-    gBoostPressure = 0.0f;
+  // 1. Shift the voltage so Atmosphere = 0V
+  // If sensor reads 1.039V, relativeVolts = 0.0V
+  // If sensor reads 0.229V (deep vacuum), relativeVolts = -0.810V
+  // If sensor reads 1.500V (boost), relativeVolts = +0.461V
+  const float kAtmosphereVolts = 1.039f;
+  float relativeVolts = sensorVolts - kAtmosphereVolts;
+
+  // 2. Convert directly to Gauge Pressure (inHg)
+  // Because our slope is 0.0325V per inHg, dividing the shifted voltage
+  // naturally gives negative numbers for vacuum and positive for boost.
+  float gaugeInHg = relativeVolts / 0.0325f;
+
+  // 3. Format output based on positive/negative pressure
+  if (gaugeInHg < 0.0f) {
+    // We are in vacuum. Keep as negative inHg.
+    gBoostPressure = gaugeInHg; 
   } else {
-    float vacuumInHg = -sensorVolts / 0.0325f;
-    if (vacuumInHg > 0.0f) {
-      // Negative pressure (vacuum)
-      gBoostPressure = vacuumInHg; // inHg (negative)
-    } else {
-      // Positive pressure (boost)
-      boostPsi = ((-vacuumInHg) / 2.03602f) - kAtmospherePsi;
-      if (boostPsi < 0.0f) boostPsi = 0.0f; // Clamp to zero below atmosphere
-      gBoostPressure = boostPsi; // PSI (positive, gauge)
-    }
+    // We are in boost. Convert positive inHg to PSI.
+    gBoostPressure = gaugeInHg / 2.03602f; 
   }
 }
 
