@@ -3,6 +3,7 @@
 #include "Display/lcd_init.h"
 #include "Display/GUI_Paint.h"
 #include "Display/fonts.h"
+#include "Display/Font_Logisoso.h"
 #include "Display/LCD_1in28.h"
 #include "Display/CST816S.h"
 #include "Display/QMI8658.h"
@@ -351,7 +352,7 @@ void drawStatusIfNeeded(UWORD y, UWORD color) {
 
   char buffer[32];
   snprintf(buffer, sizeof(buffer), "%s", getOBDStatusText());
-  drawCenteredTextFixed(y, buffer, &Font12, color, BLACK);
+  drawCenteredTextFixed(y, buffer, &Font_Logisoso_12, color, BLACK);
 }
 
 int determineCurrentGear(float currentRpm, float currentKph) {
@@ -464,8 +465,8 @@ void renderBoostGauge() {
   } else {
     snprintf(buffer, sizeof(buffer), "%.1f PSI", (double)boost);
   }
-  drawCenteredTextFixed(84, buffer, &Font24, WHITE, BLACK);
-  drawCenteredTextFixed(112, "BOOST", &Font12, WHITE, BLACK);
+  drawCenteredTextFixed(84, buffer, &Font_Logisoso_24, WHITE, BLACK);
+  drawCenteredTextFixed(112, "BOOST", &Font_Logisoso_12, WHITE, BLACK);
 
   // Status message (small, above secondary data)
   drawStatusIfNeeded(160, GRAY);
@@ -473,10 +474,10 @@ void renderBoostGauge() {
   // Secondary data in larger font, moved down
   const UWORD waterColor = waterTempColor(obdValues.coolant_temp_c);
   snprintf(buffer, sizeof(buffer), "Water: %.0fC", (double)obdValues.coolant_temp_c);
-  drawCenteredTextFixed(180, buffer, &Font20, waterColor, BLACK);
+  drawCenteredTextFixed(180, buffer, &Font_Logisoso_20, waterColor, BLACK);
 
   snprintf(buffer, sizeof(buffer), "AIT: %.0fC", (double)obdValues.intake_air_temp_c);
-  drawCenteredTextFixed(208, buffer, &Font20, GBLUE, BLACK);
+  drawCenteredTextFixed(208, buffer, &Font_Logisoso_20, GBLUE, BLACK);
 
   LCD_1IN28_Display(BlackImage);
 }
@@ -503,11 +504,11 @@ void renderHorsepowerGauge() {
   char buffer[64];
 
   snprintf(buffer, sizeof(buffer), "%.0f", (double)hp);
-  drawCenteredTextFixed(84, buffer, &Font24, WHITE, BLACK);
-  drawCenteredTextFixed(112, "HP", &Font16, WHITE, BLACK);
-  drawCenteredTextFixed(146, "MAF x 1.25", &Font12, GBLUE, BLACK);
+  drawCenteredTextFixed(84, buffer, &Font_Logisoso_24, WHITE, BLACK);
+  drawCenteredTextFixed(112, "HP", &Font_Logisoso_16, WHITE, BLACK);
+  drawCenteredTextFixed(146, "MAF x 1.25", &Font_Logisoso_12, GBLUE, BLACK);
   snprintf(buffer, sizeof(buffer), "MAF: %.1f g/s", (double)obdValues.maf_airflow);
-  drawCenteredTextFixed(168, buffer, &Font16, GBLUE, BLACK);
+  drawCenteredTextFixed(168, buffer, &Font_Logisoso_16, GBLUE, BLACK);
 
   drawStatusIfNeeded(194, GRAY);
 
@@ -535,14 +536,14 @@ void renderAfrGauge() {
 
   char buffer[64];
   snprintf(buffer, sizeof(buffer), "%.2f", (double)afr);
-  drawCenteredTextFixed(80, buffer, &Font24, WHITE, BLACK);
-  drawCenteredTextFixed(108, "AFR", &Font16, WHITE, BLACK);
+  drawCenteredTextFixed(80, buffer, &Font_Logisoso_24, WHITE, BLACK);
+  drawCenteredTextFixed(108, "AFR", &Font_Logisoso_16, WHITE, BLACK);
 
   snprintf(buffer, sizeof(buffer), "Lambda: %.3f", (double)obdValues.lambda_ratio);
-  drawCenteredTextFixed(144, buffer, &Font16, GBLUE, BLACK);
+  drawCenteredTextFixed(144, buffer, &Font_Logisoso_16, GBLUE, BLACK);
 
   snprintf(buffer, sizeof(buffer), "Stoich: %.1f", (double)kGasolineStoichAfr);
-  drawCenteredTextFixed(168, buffer, &Font12, GRAY, BLACK);
+  drawCenteredTextFixed(168, buffer, &Font_Logisoso_12, GRAY, BLACK);
 
   drawStatusIfNeeded(194, GRAY);
 
@@ -571,13 +572,13 @@ void renderIgnitionGauge() {
 
   char buffer[64];
   snprintf(buffer, sizeof(buffer), "%.1f", (double)timing);
-  drawCenteredTextFixed(80, buffer, &Font24, WHITE, BLACK);
-  drawCenteredTextFixed(108, "IGN DEG", &Font16, WHITE, BLACK);
+  drawCenteredTextFixed(80, buffer, &Font_Logisoso_24, WHITE, BLACK);
+  drawCenteredTextFixed(108, "IGN DEG", &Font_Logisoso_16, WHITE, BLACK);
 
   snprintf(buffer, sizeof(buffer), "RPM: %u", (unsigned int)obdValues.rpm);
-  drawCenteredTextFixed(144, buffer, &Font16, GBLUE, BLACK);
+  drawCenteredTextFixed(144, buffer, &Font_Logisoso_16, GBLUE, BLACK);
 
-  drawCenteredTextFixed(168, "BTDC", &Font12, GRAY, BLACK);
+  drawCenteredTextFixed(168, "BTDC", &Font_Logisoso_12, GRAY, BLACK);
 
   drawStatusIfNeeded(194, GRAY);
 
@@ -613,24 +614,24 @@ void renderShiftLightGauge() {
   } else {
     snprintf(buffer, sizeof(buffer), "-");
   }
-  drawCenteredTextFixed(72, buffer, &Font24, WHITE, BLACK);
-  drawCenteredTextFixed(102, "GEAR", &Font12, GRAY, BLACK);
+  drawCenteredTextFixed(72, buffer, &Font_Logisoso_24, WHITE, BLACK);
+  drawCenteredTextFixed(102, "GEAR", &Font_Logisoso_12, GRAY, BLACK);
 
   snprintf(buffer, sizeof(buffer), "RPM: %u", (unsigned int)obdValues.rpm);
-  drawCenteredTextFixed(136, buffer, &Font16, arcColor, BLACK);
+  drawCenteredTextFixed(136, buffer, &Font_Logisoso_16, arcColor, BLACK);
 
   snprintf(buffer, sizeof(buffer), "Speed: %u km/h", (unsigned int)obdValues.vehicle_speed_kmh);
-  drawCenteredTextFixed(160, buffer, &Font16, GBLUE, BLACK);
+  drawCenteredTextFixed(160, buffer, &Font_Logisoso_16, GBLUE, BLACK);
 
   if (gear > 0 && targetShiftRpm > 0) {
     snprintf(buffer, sizeof(buffer), "Shift @ %u", (unsigned int)targetShiftRpm);
-    drawCenteredTextFixed(184, buffer, &Font12, arcColor, BLACK);
+    drawCenteredTextFixed(184, buffer, &Font_Logisoso_12, arcColor, BLACK);
   } else if (gear == 6) {
-    drawCenteredTextFixed(184, "Top Gear", &Font12, GRAY, BLACK);
+    drawCenteredTextFixed(184, "Top Gear", &Font_Logisoso_12, GRAY, BLACK);
   } else if (gear == 0) {
-    drawCenteredTextFixed(184, "Neutral / Clutch", &Font12, GRAY, BLACK);
+    drawCenteredTextFixed(184, "Neutral / Clutch", &Font_Logisoso_12, GRAY, BLACK);
   } else {
-    drawCenteredTextFixed(184, "Gear Detecting", &Font12, GRAY, BLACK);
+    drawCenteredTextFixed(184, "Gear Detecting", &Font_Logisoso_12, GRAY, BLACK);
   }
 
   drawStatusIfNeeded(206, GRAY);
@@ -655,13 +656,13 @@ void renderGmeterGauge() {
 
   // G-force labels at the ~45deg (first quadrant) position of each circle
   // Outer circle (r=72): cx+51, cy-51 approx
-  Paint_DrawString_EN(cx + 51, cy - 57, "1.5g", &Font8, BLACK, GRAY);
+  Paint_DrawString_EN(cx + 51, cy - 57, "1.5g", &Font_Logisoso_8, BLACK, GRAY);
   // Inner circle (r=36): cx+25, cy-25 approx
-  Paint_DrawString_EN(cx + 25, cy - 31, "0.75g", &Font8, BLACK, GRAY);
+  Paint_DrawString_EN(cx + 25, cy - 31, "0.75g", &Font_Logisoso_8, BLACK, GRAY);
 
   if (!gImuReady) {
-    drawCenteredTextFixed(100, "IMU OFFLINE", &Font16, RED, BLACK);
-    drawCenteredTextFixed(184, "Check QMI8658 wiring", &Font12, GRAY, BLACK);
+    drawCenteredTextFixed(100, "IMU OFFLINE", &Font_Logisoso_16, RED, BLACK);
+    drawCenteredTextFixed(184, "Check QMI8658 wiring", &Font_Logisoso_12, GRAY, BLACK);
     LCD_1IN28_Display(BlackImage);
     return;
   }
@@ -690,13 +691,13 @@ void renderGmeterGauge() {
 
   char buffer[64];
   snprintf(buffer, sizeof(buffer), "Lat: %+0.2fg", (double)gLateralG);
-  drawCenteredTextFixed(198, buffer, &Font12, GBLUE, BLACK);
+  drawCenteredTextFixed(198, buffer, &Font_Logisoso_12, GBLUE, BLACK);
 
   snprintf(buffer, sizeof(buffer), "Long: %+0.2fg", (double)gLongitudinalG);
-  drawCenteredTextFixed(212, buffer, &Font12, WHITE, BLACK);
+  drawCenteredTextFixed(212, buffer, &Font_Logisoso_12, WHITE, BLACK);
 
   snprintf(buffer, sizeof(buffer), "Forward ^");
-  drawCenteredTextFixed(226, buffer, &Font12, GRAY, BLACK);
+  drawCenteredTextFixed(226, buffer, &Font_Logisoso_12, GRAY, BLACK);
 
   drawStatusIfNeeded(16, GRAY);
 
