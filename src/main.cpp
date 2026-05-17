@@ -46,6 +46,19 @@ static volatile float gLongitudinalOffsetG = 0.0f;
 static volatile float gLateralOffsetG = 0.0f;
 static volatile bool gImuReady = false;
 
+// Peak G-force tracking (5-second trail)
+struct GForcePeak {
+  float lateralG;
+  float longitudinalG;
+  uint32_t timestampMs;
+};
+static constexpr size_t kGforcePeakBufferSize = 50;
+static GForcePeak gGforcePeakBuffer[kGforcePeakBufferSize] = {};
+static size_t gGforcePeakIndex = 0;
+static uint32_t gLastPeakSampleMs = 0;
+static constexpr uint32_t kGforcePeakSampleIntervalMs = 100; // Sample every 100ms
+static constexpr uint32_t kGforceTrailWindowMs = 5000; // Keep 5 second history
+
 static constexpr float kGasolineStoichAfr = 14.7f;
 static constexpr float kBoostDisplayMin = -10.0f;
 static constexpr float kBoostDisplayMax = 25.0f;
@@ -219,6 +232,17 @@ void updateImuSensors() {
 
   gLongitudinalG += kImuFilterAlpha * (longitudinalRawG - gLongitudinalG);
   gLateralG += kImuFilterAlpha * (lateralRawG - gLateralG);
+
+  // Sample peak G-force every 100ms for trail
+  const uint32_t now = millis();
+  if ((now - gLastPeakSampleMs) >= kGforcePeakSampleIntervalMs) {
+    gLastPeakSampleMs = now;
+    GForcePeak& peak = gGforcePeakBuffer[gGforcePeakIndex];
+    peak.lateralG = gLateralG;
+    peak.longitudinalG = gLongitudinalG;
+    peak.timestampMs = now;
+    gGforcePeakIndex = (gGforcePeakIndex + 1) % kGforcePeakBufferSize;
+  }
 }
 
 void updateDerivedValues() {
@@ -629,11 +653,32 @@ void renderGmeterGauge() {
   Paint_DrawLine((UWORD)cx, (UWORD)(cy - radius), (UWORD)cx, (UWORD)(cy + radius), GRAY, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
   Paint_DrawCircle((UWORD)cx, (UWORD)cy, 2, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
 
+  // G-force labels at the ~45deg (first quadrant) position of each circle
+  // Outer circle (r=72): cx+51, cy-51 approx
+  Paint_DrawString_EN(cx + 51, cy - 57, "1.5g", &Font8, BLACK, GRAY);
+  // Inner circle (r=36): cx+25, cy-25 approx
+  Paint_DrawString_EN(cx + 25, cy - 31, "0.75g", &Font8, BLACK, GRAY);
+
   if (!gImuReady) {
     drawCenteredTextFixed(100, "IMU OFFLINE", &Font16, RED, BLACK);
     drawCenteredTextFixed(184, "Check QMI8658 wiring", &Font12, GRAY, BLACK);
     LCD_1IN28_Display(BlackImage);
     return;
+  }
+
+  // Draw 5-second peak trail
+  const uint32_t now = millis();
+  for (size_t i = 0; i < kGforcePeakBufferSize; i++) {
+    const GForcePeak& peak = gGforcePeakBuffer[i];
+    if (peak.timestampMs == 0 || (now - peak.timestampMs) > kGforceTrailWindowMs) {
+      continue; // Skip empty or expired samples
+    }
+    const float lateral = clampFloat(peak.lateralG, -kGmeterDisplayRange, kGmeterDisplayRange);
+    const float longitudinal = clampFloat(peak.longitudinalG, -kGmeterDisplayRange, kGmeterDisplayRange);
+    const int trailX = cx + (int)((lateral / kGmeterDisplayRange) * (float)maxDotTravel);
+    const int trailY = cy - (int)((longitudinal / kGmeterDisplayRange) * (float)maxDotTravel);
+    // Draw trail dots in dark gray, smaller
+    Paint_DrawCircle((UWORD)trailX, (UWORD)trailY, 3, GRAY, DOT_PIXEL_1X1, DRAW_FILL_FULL);
   }
 
   const float lateral = clampFloat(gLateralG, -kGmeterDisplayRange, kGmeterDisplayRange);
