@@ -443,15 +443,16 @@ void renderBoostGauge() {
   drawCenteredTextFixed(84, buffer, &Font24, WHITE, BLACK);
   drawCenteredTextFixed(112, "BOOST", &Font12, WHITE, BLACK);
 
-  // Secondary data in blue on separate, larger lines.
+  // Status message (small, above secondary data)
+  drawStatusIfNeeded(160, GRAY);
+
+  // Secondary data in larger font, moved down
   const UWORD waterColor = waterTempColor(obdValues.coolant_temp_c);
   snprintf(buffer, sizeof(buffer), "Water: %.0fC", (double)obdValues.coolant_temp_c);
-  drawCenteredTextFixed(146, buffer, &Font16, waterColor, BLACK);
+  drawCenteredTextFixed(180, buffer, &Font20, waterColor, BLACK);
 
   snprintf(buffer, sizeof(buffer), "AIT: %.0fC", (double)obdValues.intake_air_temp_c);
-  drawCenteredTextFixed(168, buffer, &Font16, GBLUE, BLACK);
-
-  drawStatusIfNeeded(194, GRAY);
+  drawCenteredTextFixed(208, buffer, &Font20, GBLUE, BLACK);
 
   LCD_1IN28_Display(BlackImage);
 }
