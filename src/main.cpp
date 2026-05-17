@@ -141,8 +141,31 @@ void updateAnalogSensors() {
   const float sensorVolts = adcInputVolts * kAdcDividerCompensation;
 
   gBoostSensorVoltage = sensorVolts;
-  // Display the actual sensor input voltage (compensated for the 2x divider).
-  gBoostPressure = sensorVolts;
+
+  // Conversion: Output (V) = -0.0325 * Vacuum (inHg)
+  // Vacuum (inHg) = -V / 0.0325
+  // For positive pressure (boost), convert to PSI (1 PSI = 2.03602 inHg)
+  float boostPsi = 0.0f;
+  float boostInHg = 0.0f;
+  const float kAtmospherePsi = 14.7f;
+  if (sensorVolts < 0.0f) {
+    // Should not happen, but clamp to zero
+    gBoostPressure = 0.0f;
+  } else if (sensorVolts < 0.01f) {
+    // Treat as atmospheric (zero boost/vacuum)
+    gBoostPressure = 0.0f;
+  } else {
+    float vacuumInHg = -sensorVolts / 0.0325f;
+    if (vacuumInHg > 0.0f) {
+      // Negative pressure (vacuum)
+      gBoostPressure = vacuumInHg; // inHg (negative)
+    } else {
+      // Positive pressure (boost)
+      boostPsi = ((-vacuumInHg) / 2.03602f) - kAtmospherePsi;
+      if (boostPsi < 0.0f) boostPsi = 0.0f; // Clamp to zero below atmosphere
+      gBoostPressure = boostPsi; // PSI (positive, gauge)
+    }
+  }
 }
 
 void calibrateImuZero() {
@@ -415,8 +438,12 @@ void renderBoostGauge() {
 
   char buffer[64];
 
-  // Center boost value in large white text
-  snprintf(buffer, sizeof(buffer), "%.1f", (double)boost);
+  // Center boost value in large white text, with units
+  if (boost < 0.0f) {
+    snprintf(buffer, sizeof(buffer), "%.1f inHg", (double)boost);
+  } else {
+    snprintf(buffer, sizeof(buffer), "%.1f PSI", (double)boost);
+  }
   drawCenteredTextFixed(84, buffer, &Font24, WHITE, BLACK);
   drawCenteredTextFixed(112, "BOOST", &Font12, WHITE, BLACK);
 
