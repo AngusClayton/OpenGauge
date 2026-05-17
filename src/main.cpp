@@ -83,7 +83,7 @@ static const PidMetricConfig kHorsepowerGaugeMetrics[] = {
 };
 
 static const PidMetricConfig kAfrGaugeMetrics[] = {
-  {PID_O2_SENSOR1_LAMBDA, "Lambda", PID_FORMULA_LINEAR_AB, 1.0f / 32768.0f, 0.0f, 2, true},
+  {PID_O2_SENSOR1_LAMBDA, "Lambda", PID_FORMULA_LINEAR_AB, 1.0f / 32768.0f, 0.0f, 2, true}, // Now PID 0x34
 };
 
 static const PidMetricConfig kIgnitionGaugeMetrics[] = {

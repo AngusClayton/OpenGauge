@@ -169,7 +169,7 @@ void loadDefaultConfigsUnlocked() {
   add(PID_IGNITION_TIMING, "Ign Timing", PID_FORMULA_LINEAR_A, 0.5f, -64.0f, 1);
   add(PID_FUEL_PRESSURE, "Fuel Press", PID_FORMULA_LINEAR_A, 0.079f, 0.0f, 1);
   add(PID_O2_VOLTAGE, "O2 Voltage", PID_FORMULA_LINEAR_A, 0.005f, 0.0f, 1);
-  add(PID_O2_SENSOR1_LAMBDA, "Lambda", PID_FORMULA_LINEAR_AB, 1.0f / 32768.0f, 0.0f, 2);
+  add(PID_O2_SENSOR1_LAMBDA, "Lambda", PID_FORMULA_LINEAR_AB, 1.0f / 32768.0f, 0.0f, 2); // Now PID 0x34
   add(PID_ETHANOL_FUEL, "Ethanol", PID_FORMULA_RAW_A, 1.0f, 0.0f, 1);
 
   rebuildScheduleFromConfigsUnlocked();

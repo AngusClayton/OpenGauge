@@ -19,7 +19,7 @@
 #define PID_MAF_AIRFLOW        0x10   // Mass airflow sensor
 #define PID_THROTTLE_POS       0x11   // Throttle position
 #define PID_O2_VOLTAGE         0x14   // O2 sensor voltage
-#define PID_O2_SENSOR1_LAMBDA  0x24   // Wideband O2 sensor 1 equivalence ratio
+#define PID_O2_SENSOR1_LAMBDA  0x34   // Wideband O2 sensor 1 equivalence ratio (changed from 0x24)
 #define PID_ETHANOL_FUEL       0x52   // Ethanol fuel percentage
 
 // ============= COMPUTED VALUES STRUCT =============
