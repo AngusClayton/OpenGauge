@@ -5,8 +5,8 @@
 #include <ESP32-TWAI-CAN.hpp>
 
 // CAN pins
-#define CAN_TX    15
-#define CAN_RX    16
+#define CAN_TX    16
+#define CAN_RX    15
 
 // OBD2 CAN IDs
 #define OBD_REQUEST_ID   0x7DF
