@@ -768,7 +768,6 @@ void obdTask(void *pvParameters) {
 
     if ((now - lastAnalogMs) >= analogIntervalMs) {
       updateAnalogSensors();
-      updateImuSensors();
       lastAnalogMs = now;
     }
 
@@ -804,6 +803,7 @@ void displayTask(void *pvParameters) {
       }
     }
 
+    updateImuSensors(); // Must run in displayTask — shares Wire I2C bus with touch controller
     renderDisplay();
 
     loopCount++;
