@@ -160,7 +160,7 @@ void updateAnalogSensors() {
   // If sensor reads 1.039V, relativeVolts = 0.0V
   // If sensor reads 0.229V (deep vacuum), relativeVolts = -0.810V
   // If sensor reads 1.500V (boost), relativeVolts = +0.461V
-  const float kAtmosphereVolts = 1.039f;
+  const float kAtmosphereVolts = 0.91875f;
   float relativeVolts = sensorVolts - kAtmosphereVolts;
 
   // 2. Convert directly to Gauge Pressure (inHg)
