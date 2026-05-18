@@ -14,18 +14,30 @@
 #include "GaugeRenderer.h"
 #include "ConfigManager.h"
 
-// External display buffer
+// External display memory variables allocated by the Waveshare board initialization drivers
 extern UWORD *BlackImage;
 extern UDOUBLE Imagesize;
 
-// Create touch object
-CST816S touch(6, 7, 13, 5);  // sda, scl, rst, irq
+// Create touch controller object using the CST816S driver
+CST816S touch(6, 7, 13, 5);  // Pin definition: sda, scl, rst, irq
 
 TaskHandle_t obdTaskHandle = NULL;
 TaskHandle_t displayTaskHandle = NULL;
 
-static uint32_t gLastSwipeMs = 0;
+static uint32_t gLastSwipeMs = 0; // Debounce tracking timestamp for touch swipe gestures
 
+/**
+ * @brief Continuous background FreeRTOS task handling CAN bus communications.
+ * 
+ * Runs on core 1 with high priority (3). Responsibilities:
+ * 1. Monitors and auto-recovers OBD-II/CAN transceiver connectivity.
+ * 2. Rapidly drains the incoming TWAI hardware CAN FIFO buffer.
+ * 3. Schedules and sends outgoing PID requests at a stable 20Hz cadence (50ms interval).
+ * 4. Continuously polls the local physical ADC analog pins at 50Hz (20ms interval).
+ * 5. Recomputes final display variables in the background cache.
+ * 
+ * @param pvParameters FreeRTOS task configuration parameters (unused).
+ */
 void obdTask(void *pvParameters) {
   const TickType_t xLoopDelay = pdMS_TO_TICKS(10);
   const uint32_t requestIntervalMs = 50;
@@ -41,6 +53,7 @@ void obdTask(void *pvParameters) {
   while (1) {
     const uint32_t now = millis();
 
+    // Block logic if OBD link drops out; attempt reconnection in background
     if (!isOBDReady()) {
       if (!tryRecoverOBD() && (now - lastStatusLogMs) >= 1000) {
         Serial.println("[OBD] Waiting for CAN ready...");
@@ -63,6 +76,7 @@ void obdTask(void *pvParameters) {
       lastRequestMs = now;
     }
 
+    // Dynamic analog physical pin readings
     if ((now - lastAnalogMs) >= analogIntervalMs) {
       updateAnalogSources();
       lastAnalogMs = now;
@@ -75,6 +89,20 @@ void obdTask(void *pvParameters) {
   }
 }
 
+/**
+ * @brief Continuous background FreeRTOS task handling UI rendering.
+ * 
+ * Runs on core 0 with standard priority (2). Responsibilities:
+ * 1. Checks the CST816S touch controller for swipes.
+ * 2. Switches profiles on left/right swipes with a 250ms swipe debounce.
+ * 3. Polls accelerometer metrics and applies low-pass noise filters.
+ * 4. Triggers display renders on the LCD display buffer via renderDisplay().
+ * 
+ * Note: QMI8658 IMU and CST816S Touch controller must reside in the same thread 
+ * as they share the same physical I2C Wire hardware bus.
+ * 
+ * @param pvParameters FreeRTOS task configuration parameters (unused).
+ */
 void displayTask(void *pvParameters) {
   const TickType_t xDelay = pdMS_TO_TICKS(100);
   uint32_t loopCount = 0;
@@ -82,6 +110,7 @@ void displayTask(void *pvParameters) {
   Serial.println("[DISPLAY] Task started");
 
   while (1) {
+    // Process swipe gestures
     if (touch.available()) {
       const uint32_t now = millis();
       if ((now - gLastSwipeMs) > 250) {
@@ -95,9 +124,10 @@ void displayTask(void *pvParameters) {
       }
     }
 
-    updateImuSensors(); // Must run in displayTask — shares Wire I2C bus with touch controller
+    updateImuSensors(); // Reads IMU via I2C bus
     renderDisplay();
 
+    // Monitor thread stability by periodically printing FreeRTOS stack high watermarks
     loopCount++;
     if ((loopCount % 50) == 0) {
       UBaseType_t watermark = uxTaskGetStackHighWaterMark(NULL);
@@ -108,6 +138,13 @@ void displayTask(void *pvParameters) {
   }
 }
 
+/**
+ * @brief Primary Arduino startup boot configurations.
+ * 
+ * Sets up serial consoles, initializes standard CAN communications, boots the JSON layout 
+ * memory engine, prepares the ADC pins, starts standard hardware SPI displays, and spawns the 
+ * primary FreeRTOS scheduling tasks (OBD & DISPLAY) on dedicated cores.
+ */
 void setup() {
   Serial.begin(115200);
   delay(100);
@@ -120,19 +157,24 @@ void setup() {
   // Seed defaults
   initPidScheduleDefaults();
 
+  // Load layout configurations from embedded JSON blocks
   loadConfigFromJson();
 
+  // Setup raw analog pins
   initAnalogInputs();
   updateAnalogSources();
 
-  // Initialize LCD and display buffer after OBD, matching the original project more closely.
+  // Initialize LCD and display buffer after OBD, matching the original project closely.
   initLCD();
   Serial.println("LCD initialized");
 
+  // Spin up spatial accelerometer hardware
   initImuSensor();
 
+  // Render first screen profile immediately
   renderDisplay();
 
+  // Spawn CAN processing thread
   xTaskCreate(
     obdTask,
     "OBD",
@@ -142,6 +184,7 @@ void setup() {
     &obdTaskHandle
   );
 
+  // Spawn UI and Rendering thread
   xTaskCreate(
     displayTask,
     "DISPLAY",
@@ -154,6 +197,13 @@ void setup() {
   Serial.println("=== Setup Complete ===\n");
 }
 
+/**
+ * @brief Default Arduino execution loop.
+ * 
+ * Empty by design. Because we use a multi-tasking FreeRTOS scheduler, the main thread 
+ * task is deleted immediately after setup is complete using vTaskDelete(NULL) to 
+ * conserve MCU memory resources.
+ */
 void loop() {
   vTaskDelete(NULL);
 }

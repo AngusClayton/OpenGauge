@@ -83,6 +83,13 @@ const char* gaugesJson = R"====([
 ])====";
 
 
+/**
+ * @brief Parses JSON-defined variable registers and gauge profiles once at startup.
+ * 
+ * This processes the hardcoded JSON strings varsJson and gaugesJson into highly 
+ * efficient C-structs in RAM. Once populated, these structs are referenced in 
+ * real-time during the display loop, removing the need for runtime JSON parsing.
+ */
 void loadConfigFromJson() {
   // Parse Variables
   JsonDocument docVars;
@@ -168,6 +175,16 @@ void loadConfigFromJson() {
 #include "Sensors.h"
 #include "obd/pid_config.h"
 
+/**
+ * @brief Unified interface to fetch real-time sensor metrics by variable ID.
+ * 
+ * Automatically resolves whether a requested ID is driven by the dynamic OBD bus 
+ * or an onboard Analog input. It also handles customized non-linear outputs (like 
+ * splitting vacuum/boost scales for the boostPress variable).
+ * 
+ * @param sourceId Unique string identifier of the metric (e.g. "rpm", "boostPress")
+ * @return float Calibrated value of the requested metric.
+ */
 float getValueForSource(const char* sourceId) {
     for (size_t i = 0; i < activeDataSourceCount; i++) {
         if (strcmp(activeDataSources[i].id, sourceId) == 0) {
@@ -216,8 +233,11 @@ void updateAnalogSources() {
     for (size_t i = 0; i < activeDataSourceCount; i++) {
         if (activeDataSources[i].type == SOURCE_ANALOG) {
             int raw = analogRead(activeDataSources[i].pin);
-            // Convert raw 12-bit ADC reading to compensated sensor voltage (incorporating the 50/50 voltage divider: 3.3V ref * 2.0 divider compensation)
+            // Convert raw 12-bit ADC reading (0-4095) to compensated sensor voltage.
+            // Compensates for the 50/50 hardware voltage divider (2.0 multiplier) 
+            // and maps relative to the ESP32 3.3V reference.
             float sensorVolts = ((float)raw / 4095.0f) * 3.3f * 2.0f;
+            // Apply standard linear calibration formula defined in the variables JSON config
             activeDataSources[i].cachedValue = (sensorVolts * activeDataSources[i].multiplier) + activeDataSources[i].offset;
         }
     }
@@ -225,10 +245,26 @@ void updateAnalogSources() {
 
 static size_t gCurrentGaugeProfileIndex = 0;
 
+/**
+ * @brief Gets the zero-based index of the currently active gauge profile.
+ * 
+ * @return size_t Current active gauge index.
+ */
 size_t getCurrentGaugeProfileIndex() {
     return gCurrentGaugeProfileIndex;
 }
 
+/**
+ * @brief Switch the active display layout and optimize the OBD query schedule.
+ * 
+ * Performs dynamic dependency mapping on the newly selected gauge:
+ * 1. Checks what data sources (OBD variables) are needed for the dial arc and bottom readouts.
+ * 2. Compiles a unique, deduplicated list of OBD PIDs needed for these variables.
+ * 3. Passes the clean PID list to the TWAI CAN scheduler via setPidSchedule().
+ * 4. Custom screens (like Shift Light or G-Meter) automatically include their background requirements.
+ * 
+ * @param index Zero-based profile index to switch to.
+ */
 void applyGaugeProfile(size_t index) {
   if (index >= activeGaugeCount) {
     return;
@@ -240,6 +276,7 @@ void applyGaugeProfile(size_t index) {
   uint8_t pids[MAX_DATA_SOURCES];
   size_t pidCount = 0;
   
+  // Internal helper to lookup source dependencies and register their associated PIDs
   auto addSourcePid = [&](const char* sourceId) {
     if (strlen(sourceId) == 0) return;
     for (size_t i = 0; i < activeDataSourceCount; i++) {
@@ -260,17 +297,17 @@ void applyGaugeProfile(size_t index) {
     }
   };
 
+  // Compile layout dependency list
   addSourcePid(gc.mainSourceId);
   for (uint8_t i = 0; i < gc.secondaryCount; i++) {
       addSourcePid(gc.secondaries[i].sourceId);
   }
 
-  // Hardcoded dependencies for custom gauges
+  // Inject hardcoded background requirements for custom-rendered screens
   if (gc.type == GAUGE_TYPE_SHIFTLIGHT || gc.type == GAUGE_TYPE_GMETER) {
      addSourcePid("rpm");
      addSourcePid("speed");
   } else if (strcmp(gc.name, "Gauge 2: Horsepower") == 0) {
-     // Because renderHorsepowerGauge is still hardcoded to use MAF 
      addSourcePid("maf");
   } else if (strcmp(gc.name, "Gauge 3: AFR") == 0) {
      addSourcePid("lambda");
@@ -279,6 +316,7 @@ void applyGaugeProfile(size_t index) {
      addSourcePid("rpm");
   }
 
+  // Update TWAI CAN schedule dynamically. Only active variables will poll the ECU!
   setPidSchedule(pids, pidCount);
   
   Serial.printf("[CONFIG] Switched to profile %u: %s (Scheduled %u PIDs)\n",
@@ -287,12 +325,18 @@ void applyGaugeProfile(size_t index) {
                 (unsigned int)pidCount);
 }
 
+/**
+ * @brief Cycle to the next sequential gauge profile.
+ */
 void nextGaugeProfile() {
   if (activeGaugeCount == 0) return;
   const size_t next = (gCurrentGaugeProfileIndex + 1) % activeGaugeCount;
   applyGaugeProfile(next);
 }
 
+/**
+ * @brief Cycle to the previous sequential gauge profile.
+ */
 void prevGaugeProfile() {
   if (activeGaugeCount == 0) return;
   const size_t prev = (gCurrentGaugeProfileIndex + activeGaugeCount - 1) % activeGaugeCount;

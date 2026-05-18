@@ -38,6 +38,14 @@ static const ShiftGearConfig kShiftGearTable[] = {
   {6, 24.0f, 0},
 };
 
+/**
+ * @brief Manages the display delay timer when an OBD connection issue arises.
+ * 
+ * Prevents the screen from immediately flickering or flashing warning text 
+ * by waiting for a contiguous 5-second connection failure state first.
+ * 
+ * @param statusIssue True if the OBD protocol is currently experiencing failure.
+ */
 void updateStatusIssueTimer(bool statusIssue) {
   if (statusIssue) {
     if (gStatusIssueSinceMs == 0) {
@@ -48,6 +56,14 @@ void updateStatusIssueTimer(bool statusIssue) {
   }
 }
 
+/**
+ * @brief Standard mathematical clamp function for floats.
+ * 
+ * @param value Floating-point value to clamp.
+ * @param minValue Lower boundary constraint.
+ * @param maxValue Upper boundary constraint.
+ * @return float Clamped value.
+ */
 float clampFloat(float value, float minValue, float maxValue) {
   if (value < minValue) {
     return minValue;
@@ -58,6 +74,14 @@ float clampFloat(float value, float minValue, float maxValue) {
   return value;
 }
 
+/**
+ * @brief Determines the dynamic text color depending on engine coolant temperature.
+ * 
+ * Cold: Blue. Normal: Teal/GBlue. Overheating (>105C): Red flash.
+ * 
+ * @param waterTempC Temperature value in Celsius.
+ * @return UWORD 16-bit color code for the LCD library.
+ */
 UWORD waterTempColor(float waterTempC) {
   if (waterTempC < 80.0f) {
     return kColdWaterColor;
@@ -68,6 +92,20 @@ UWORD waterTempColor(float waterTempC) {
   return kNormalWaterColor;
 }
 
+/**
+ * @brief Draws a circular dial arc representing the primary gauge readout.
+ * 
+ * Maps standard clock angles to polar coordinates, drawing a continuous arc of 
+ * custom thickness by calculating dynamic sine/cosine offsets.
+ * 
+ * @param cx Center X coordinate on the screen.
+ * @param cy Center Y coordinate on the screen.
+ * @param radius Radius of the dial arc.
+ * @param thickness Stroke thickness of the drawn dial.
+ * @param startClockDeg Polar starting angle (in degrees).
+ * @param sweepClockDeg Total sweep length of the arc (in degrees).
+ * @param color 16-bit color value of the drawn segments.
+ */
 void drawClockArc(int cx, int cy, int radius, int thickness, float startClockDeg, float sweepClockDeg, UWORD color) {
   const float degToRad = 3.14159265f / 180.0f;
   const int steps = (int)fabsf(sweepClockDeg);
@@ -91,10 +129,20 @@ void drawClockArc(int cx, int cy, int radius, int thickness, float startClockDeg
   }
 }
 
+/**
+ * @brief Wraps the Waveshare hardware paint library string rendering.
+ */
 void drawTextFixed(UWORD x, UWORD y, const char* text, sFONT* font, UWORD fg, UWORD bg) {
   Paint_DrawString_EN(x, y, text, font, bg, fg);
 }
 
+/**
+ * @brief Computes exact pixel width of a text string based on font constraints.
+ * 
+ * @param text The input character string.
+ * @param font Pointer to the font metadata table.
+ * @return int Computed pixel width.
+ */
 int textWidthPx(const char* text, sFONT* font) {
   if (text == NULL || font == NULL) {
     return 0;
@@ -102,6 +150,17 @@ int textWidthPx(const char* text, sFONT* font) {
   return (int)strlen(text) * (int)font->Width;
 }
 
+/**
+ * @brief Utility function to draw text perfectly aligned horizontally on the LCD.
+ * 
+ * Automatically centers text horizontally within the 240px circular boundary.
+ * 
+ * @param y Coordinate Y position of the baseline text.
+ * @param text Pointer to characters to draw.
+ * @param font Pointer to LCD font specification.
+ * @param fg Foreground color.
+ * @param bg Background color.
+ */
 void drawCenteredTextFixed(UWORD y, const char* text, sFONT* font, UWORD fg, UWORD bg) {
   const int width = textWidthPx(text, font);
   int x = (240 - width) / 2;
@@ -111,6 +170,9 @@ void drawCenteredTextFixed(UWORD y, const char* text, sFONT* font, UWORD fg, UWO
   drawTextFixed((UWORD)x, y, text, font, fg, bg);
 }
 
+/**
+ * @brief Displays connection/fault warnings at the top/bottom if OBD bus drops out.
+ */
 void drawStatusIfNeeded(UWORD y, UWORD color) {
   const OBDLinkStatus status = getOBDLinkStatus();
   const bool statusIssue = (status == OBD_STATUS_NO_BUS || status == OBD_STATUS_ERROR);
@@ -124,6 +186,20 @@ void drawStatusIfNeeded(UWORD y, UWORD color) {
   drawCenteredTextFixed(y, buffer, &Font_nokia_8, color, BLACK);
 }
 
+/**
+ * @brief Dynamic transmission gear detection algorithm.
+ * 
+ * Compares current Engine Speed (RPM) to Vehicle Speed (KPH) to compute the 
+ * mechanical drive ratio. Using dynamic mathematical tolerance scaling, this maps 
+ * the ratio to standard gear configurations defined in kShiftGearTable.
+ * 
+ * Includes a brief hold window to prevent gear readouts from fluctuating or dropping 
+ * during shifts.
+ * 
+ * @param currentRpm Real-time engine speed (RPM).
+ * @param currentKph Real-time vehicle velocity (KM/H).
+ * @return int Detected gear number (1-6), 0 if Neutral/Clutch depressed, -1 if unresolved.
+ */
 int determineCurrentGear(float currentRpm, float currentKph) {
   constexpr float kMinKph = 3.0f;
   constexpr float kMinRpm = 850.0f;
@@ -165,6 +241,9 @@ int determineCurrentGear(float currentRpm, float currentKph) {
   return -1;
 }
 
+/**
+ * @brief Lookup helper to find the target shift threshold RPM for a given gear.
+ */
 uint16_t getTargetShiftRpmForGear(int gear) {
   const size_t gearCount = sizeof(kShiftGearTable) / sizeof(kShiftGearTable[0]);
   for (size_t i = 0; i < gearCount; i++) {
@@ -175,6 +254,11 @@ uint16_t getTargetShiftRpmForGear(int gear) {
   return 0;
 }
 
+/**
+ * @brief Dynamic colors for Shift Light display segments.
+ * 
+ * Yellow at 90%, Orange at 96%, and blinking Red at 100% of target RPM.
+ */
 UWORD shiftLightColor(float rpm, uint16_t targetShiftRpm) {
   if (targetShiftRpm == 0) {
     return WHITE;
@@ -195,6 +279,9 @@ UWORD shiftLightColor(float rpm, uint16_t targetShiftRpm) {
   return WHITE;
 }
 
+/**
+ * @brief Computes standard sweep bounds (0-240 degrees) of the shift light arc.
+ */
 float shiftArcSweep(float rpm, uint16_t targetShiftRpm) {
   if (targetShiftRpm == 0) {
     return 0.0f;
@@ -323,6 +410,16 @@ void renderGmeterGauge() {
   LCD_1IN28_Display(BlackImage);
 }
 
+/**
+ * @brief Primary generalized renderer for circular standard gauges.
+ * 
+ * Completely data-driven by the active profile's GaugeConfig configuration. 
+ * Renders standard dial arc, centers primary digital reading inside the circle, 
+ * draws labels dynamically, and handles secondary metric configurations (like 
+ * Intake Temp, Coolant Temp, Fuel pressure) dynamically positioned vertically.
+ * 
+ * @param config Struct containing screen constraints and variable mappings.
+ */
 void renderGenericGauge(const GaugeConfig& config) {
   Paint_Clear(BLACK);
 
@@ -351,6 +448,7 @@ void renderGenericGauge(const GaugeConfig& config) {
   }
   drawCenteredTextFixed(80, buffer, &Font_nokia_20, WHITE, BLACK);
   
+  // Custom case: dynamically adjust unit labels if handling vacuum/boost scales
   if (config.boostUnits) {
       if (mainVal < 0.0f) {
           drawCenteredTextFixed(108, "Boost (inHg)", &Font_nokia_8, WHITE, BLACK);
@@ -361,6 +459,7 @@ void renderGenericGauge(const GaugeConfig& config) {
       drawCenteredTextFixed(108, config.unitLabel, &Font_nokia_8, WHITE, BLACK);
   }
 
+  // Draw any active secondary readouts below the primary dial values
   for (uint8_t i = 0; i < config.secondaryCount; i++) {
       const SecondaryMetric& sec = config.secondaries[i];
       float secVal = getValueForSource(sec.sourceId);
@@ -383,6 +482,11 @@ void renderGenericGauge(const GaugeConfig& config) {
   LCD_1IN28_Display(BlackImage);
 }
 
+/**
+ * @brief Dispatch renderer loop triggered at 50Hz (every 20ms) inside main task.
+ * 
+ * Translates the active JSON profile type to its respective drawing layout.
+ */
 void renderDisplay() {
   size_t idx = getCurrentGaugeProfileIndex();
   if (idx < activeGaugeCount) {
