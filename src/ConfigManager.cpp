@@ -18,7 +18,7 @@ const char* varsJson = R"====([
   { "id": "lambda", "type": "obd", "pid": 52, "formula": 7 },
   { "id": "afr", "type": "obd", "pid": 52, "formula": 7 },
   { "id": "ignition", "type": "obd", "pid": 14, "formula": 6 },
-  { "id": "boostPress", "type": "analog", "pin": 18, "multiplier": 30.76, "offset": -28.26 }
+  { "id": "boostPress", "type": "analog", "pin": 18, "multiplier": 30.7692, "offset": -28.2692 }
 ])====";
 
 const char* gaugesJson = R"====([
@@ -197,7 +197,15 @@ float getValueForSource(const char* sourceId) {
                     default: return 0.0f;
                 }
             } else if (ds.type == SOURCE_ANALOG) {
-                return ds.cachedValue;
+                float val = ds.cachedValue;
+                if (strcmp(sourceId, "boostPress") == 0) {
+                    if (val < 0.0f) {
+                        return val; // Vacuum in inHg
+                    } else {
+                        return val / 2.03602f; // Boost in PSI
+                    }
+                }
+                return val;
             }
         }
     }
@@ -208,9 +216,9 @@ void updateAnalogSources() {
     for (size_t i = 0; i < activeDataSourceCount; i++) {
         if (activeDataSources[i].type == SOURCE_ANALOG) {
             int raw = analogRead(activeDataSources[i].pin);
-            // Apply the formula based on generic math for analog inputs
-            // The JSON config should provide the necessary multiplier and offset
-            activeDataSources[i].cachedValue = ((float)raw * activeDataSources[i].multiplier) + activeDataSources[i].offset;
+            // Convert raw 12-bit ADC reading to compensated sensor voltage (incorporating the 50/50 voltage divider: 3.3V ref * 2.0 divider compensation)
+            float sensorVolts = ((float)raw / 4095.0f) * 3.3f * 2.0f;
+            activeDataSources[i].cachedValue = (sensorVolts * activeDataSources[i].multiplier) + activeDataSources[i].offset;
         }
     }
 }
