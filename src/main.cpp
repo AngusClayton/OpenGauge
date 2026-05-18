@@ -117,9 +117,8 @@ void setup() {
   setupOBD();
   Serial.println("OBD initialized");
 
-  // Seed defaults and apply first gauge profile.
+  // Seed defaults
   initPidScheduleDefaults();
-  initGaugeProfiles();
 
   loadConfigFromJson();
 

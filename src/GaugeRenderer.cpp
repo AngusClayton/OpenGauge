@@ -7,6 +7,7 @@
 #include "Display/fonts.h"
 #include "Display/Font_nokia.h"
 #include "Display/LCD_1in28.h"
+#include "ConfigManager.h"
 #include <math.h>
 
 extern UWORD *BlackImage;
@@ -26,43 +27,14 @@ static constexpr UWORD kHotWaterColor = RED;
 static constexpr UWORD kShiftTrackColor = GRAY;
 static constexpr UWORD kShiftOrangeColor = 0xFD20;
 
-struct GaugeProfile {
-  const char* title;
-  const PidMetricConfig* metrics;
-  size_t metricCount;
-};
+static uint32_t gStatusIssueSinceMs = 0;
+static int gLastDetectedGear = 0;
+static uint32_t gLastDetectedGearMs = 0;
 
 struct ShiftGearConfig {
   uint8_t gearNumber;
   float rpmPerKph;
   uint16_t targetShiftRpm;
-};
-
-static const PidMetricConfig kBoostGaugeMetrics[] = {
-  {PID_COOLANT_TEMP, "Coolant Temp", PID_FORMULA_A_MINUS_40, 1.0f, 0.0f, 1, true},
-  {PID_INTAKE_AIR_TEMP, "Intake Air Temp", PID_FORMULA_A_MINUS_40, 1.0f, 0.0f, 1, true},
-};
-
-static const PidMetricConfig kHorsepowerGaugeMetrics[] = {
-  {PID_MAF_AIRFLOW, "MAF", PID_FORMULA_AB_DIV_100, 1.0f, 0.0f, 2, true},
-};
-
-static const PidMetricConfig kAfrGaugeMetrics[] = {
-  {PID_O2_SENSOR1_LAMBDA, "Lambda", PID_FORMULA_LINEAR_AB, 1.0f / 32768.0f, 0.0f, 2, true}, // Now PID 0x34
-};
-
-static const PidMetricConfig kIgnitionGaugeMetrics[] = {
-  {PID_IGNITION_TIMING, "Ign Timing", PID_FORMULA_LINEAR_A, 0.5f, -64.0f, 1, true},
-};
-
-static const PidMetricConfig kShiftLightGaugeMetrics[] = {
-  {PID_ENGINE_RPM, "RPM", PID_FORMULA_AB_DIV_4, 1.0f, 0.0f, 2, true},
-  {PID_VEHICLE_SPEED, "Speed", PID_FORMULA_RAW_A, 1.0f, 0.0f, 1, true},
-};
-
-static const PidMetricConfig kGmeterGaugeMetrics[] = {
-  {PID_ENGINE_RPM, "RPM", PID_FORMULA_AB_DIV_4, 1.0f, 0.0f, 2, true},
-  {PID_VEHICLE_SPEED, "Speed", PID_FORMULA_RAW_A, 1.0f, 0.0f, 1, true},
 };
 
 static const ShiftGearConfig kShiftGearTable[] = {
@@ -73,53 +45,6 @@ static const ShiftGearConfig kShiftGearTable[] = {
   {5, 28.6f, 5800},
   {6, 24.0f, 0},
 };
-
-static const GaugeProfile kProfiles[] = {
-  {"Gauge 1: Boost", kBoostGaugeMetrics, sizeof(kBoostGaugeMetrics) / sizeof(kBoostGaugeMetrics[0])},
-  {"Gauge 2: Horsepower", kHorsepowerGaugeMetrics, sizeof(kHorsepowerGaugeMetrics) / sizeof(kHorsepowerGaugeMetrics[0])},
-  {"Gauge 3: Lambda / AFR", kAfrGaugeMetrics, sizeof(kAfrGaugeMetrics) / sizeof(kAfrGaugeMetrics[0])},
-  {"Gauge 4: Ignition Timing", kIgnitionGaugeMetrics, sizeof(kIgnitionGaugeMetrics) / sizeof(kIgnitionGaugeMetrics[0])},
-  {"Gauge 5: Shift Lights", kShiftLightGaugeMetrics, sizeof(kShiftLightGaugeMetrics) / sizeof(kShiftLightGaugeMetrics[0])},
-  {"Gauge 6: G Meter", kGmeterGaugeMetrics, sizeof(kGmeterGaugeMetrics) / sizeof(kGmeterGaugeMetrics[0])},
-};
-
-static volatile size_t gCurrentProfileIndex = 0;
-static uint32_t gStatusIssueSinceMs = 0;
-static int gLastDetectedGear = 0;
-static uint32_t gLastDetectedGearMs = 0;
-
-void initGaugeProfiles() {
-  applyGaugeProfile(0);
-}
-
-void applyGaugeProfile(size_t index) {
-  const size_t profileCount = sizeof(kProfiles) / sizeof(kProfiles[0]);
-  if (index >= profileCount) {
-    return;
-  }
-
-  if (setPidMetricConfigList(kProfiles[index].metrics, kProfiles[index].metricCount)) {
-    gCurrentProfileIndex = index;
-    Serial.printf("[GAUGE] Switched to profile %u: %s (%u PIDs)\n",
-                  (unsigned int)(index + 1),
-                  kProfiles[index].title,
-                  (unsigned int)getPidScheduleCount());
-  } else {
-    Serial.println("[GAUGE] Failed to apply gauge profile");
-  }
-}
-
-void nextGaugeProfile() {
-  const size_t profileCount = sizeof(kProfiles) / sizeof(kProfiles[0]);
-  const size_t next = (gCurrentProfileIndex + 1) % profileCount;
-  applyGaugeProfile(next);
-}
-
-void prevGaugeProfile() {
-  const size_t profileCount = sizeof(kProfiles) / sizeof(kProfiles[0]);
-  const size_t prev = (gCurrentProfileIndex + profileCount - 1) % profileCount;
-  applyGaugeProfile(prev);
-}
 
 void updateStatusIssueTimer(bool statusIssue) {
   if (statusIssue) {
@@ -551,20 +476,69 @@ void renderGmeterGauge() {
   LCD_1IN28_Display(BlackImage);
 }
 
+void renderGenericGauge(const GaugeConfig& config) {
+  Paint_Clear(BLACK);
+
+  const int cx = 120;
+  const int cy = 120;
+  const int arcRadius = 112;
+  const int arcThickness = 14;
+  const float arcStartClockDeg = 240.0f;
+  const float arcSweepClockDeg = 240.0f;
+
+  float mainVal = getValueForSource(config.mainSourceId);
+  const float normalized = (clampFloat(mainVal, config.minVal, config.maxVal) - config.minVal) /
+                           (config.maxVal - config.minVal);
+  const float filledSweep = arcSweepClockDeg * normalized;
+
+  if (filledSweep > 0.5f) {
+    drawClockArc(cx, cy, arcRadius, arcThickness, arcStartClockDeg, filledSweep, WHITE);
+  }
+
+  char buffer[64];
+  
+  if (fabsf(mainVal) >= 100.0f) {
+      snprintf(buffer, sizeof(buffer), "%.0f", (double)mainVal);
+  } else {
+      snprintf(buffer, sizeof(buffer), "%.1f", (double)mainVal);
+  }
+  drawCenteredTextFixed(80, buffer, &Font_nokia_20, WHITE, BLACK);
+  drawCenteredTextFixed(108, config.unitLabel, &Font_nokia_8, WHITE, BLACK);
+
+  for (uint8_t i = 0; i < config.secondaryCount; i++) {
+      const SecondaryMetric& sec = config.secondaries[i];
+      float secVal = getValueForSource(sec.sourceId);
+      
+      if (fabsf(secVal) >= 100.0f) {
+          snprintf(buffer, sizeof(buffer), "%s%.0f%s", sec.prefix, (double)secVal, sec.suffix);
+      } else {
+          snprintf(buffer, sizeof(buffer), "%s%.1f%s", sec.prefix, (double)secVal, sec.suffix);
+      }
+      
+      UWORD color = GBLUE;
+      if (sec.dynamicColor) {
+          color = waterTempColor(secVal);
+      }
+      
+      drawCenteredTextFixed((UWORD)sec.posY, buffer, &Font_nokia_12, color, BLACK);
+  }
+
+  drawStatusIfNeeded(160, GRAY);
+  LCD_1IN28_Display(BlackImage);
+}
+
 void renderDisplay() {
-  switch (gCurrentProfileIndex) {
-    case 0:
-      renderBoostGauge();
-      return;
-    case 1:
-      renderHorsepowerGauge();
-      return;
-    case 2:
-      renderAfrGauge();
-      return;
-    case 3:
-      renderIgnitionGauge();
-      return;
+  size_t idx = getCurrentGaugeProfileIndex();
+  if (idx < activeGaugeCount) {
+    const GaugeConfig& config = activeGauges[idx];
+    if (config.type == GAUGE_TYPE_STANDARD) {
+        renderGenericGauge(config);
+        return;
+    }
+  }
+
+  // Fallbacks for custom gauges
+  switch (idx) {
     case 4:
       renderShiftLightGauge();
       return;
