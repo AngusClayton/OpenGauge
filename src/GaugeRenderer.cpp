@@ -12,20 +12,12 @@
 
 extern UWORD *BlackImage;
 
-static constexpr float kGasolineStoichAfr = 14.7f;
-static constexpr float kBoostDisplayMin = -10.0f;
-static constexpr float kBoostDisplayMax = 25.0f;
-static constexpr float kHorsepowerDisplayMin = 0.0f;
-static constexpr float kHorsepowerDisplayMax = 300.0f;
-static constexpr float kAfrDisplayMin = 10.0f;
-static constexpr float kAfrDisplayMax = 20.0f;
-static constexpr float kIgnitionTimingDisplayMin = -10.0f;
-static constexpr float kIgnitionTimingDisplayMax = 40.0f;
 static constexpr UWORD kColdWaterColor = BLUE;
 static constexpr UWORD kNormalWaterColor = GBLUE;
 static constexpr UWORD kHotWaterColor = RED;
 static constexpr UWORD kShiftTrackColor = GRAY;
 static constexpr UWORD kShiftOrangeColor = 0xFD20;
+
 
 static uint32_t gStatusIssueSinceMs = 0;
 static int gLastDetectedGear = 0;
@@ -358,7 +350,16 @@ void renderGenericGauge(const GaugeConfig& config) {
       snprintf(buffer, sizeof(buffer), "%.1f", (double)mainVal);
   }
   drawCenteredTextFixed(80, buffer, &Font_nokia_20, WHITE, BLACK);
-  drawCenteredTextFixed(108, config.unitLabel, &Font_nokia_8, WHITE, BLACK);
+  
+  if (config.boostUnits) {
+      if (mainVal < 0.0f) {
+          drawCenteredTextFixed(108, "Boost (inHg)", &Font_nokia_8, WHITE, BLACK);
+      } else {
+          drawCenteredTextFixed(108, "Boost (PSI)", &Font_nokia_8, WHITE, BLACK);
+      }
+  } else {
+      drawCenteredTextFixed(108, config.unitLabel, &Font_nokia_8, WHITE, BLACK);
+  }
 
   for (uint8_t i = 0; i < config.secondaryCount; i++) {
       const SecondaryMetric& sec = config.secondaries[i];
