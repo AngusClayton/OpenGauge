@@ -27,4 +27,5 @@ struct GaugeConfig {
     
     SecondaryMetric secondaries[3];
     uint8_t secondaryCount;
+    bool boostUnits;
 };

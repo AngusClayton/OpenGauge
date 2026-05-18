@@ -27,6 +27,7 @@ const char* gaugesJson = R"====([
     "mainSourceId": "boostPress", 
     "minVal": -10.0, "maxVal": 25.0,
     "unitLabel": "Boost (PSI)",
+    "boostUnits": true,
     "secondaries": [
       { "sourceId": "waterTemp", "prefix": "Water: ", "suffix": "C", "posY": 180, "dynamicColor": true },
       { "sourceId": "intakeTemp", "prefix": "AIT: ", "suffix": "C", "posY": 208, "dynamicColor": false }
@@ -138,6 +139,7 @@ void loadConfigFromJson() {
     gc.minVal = g["minVal"] | 0.0f;
     gc.maxVal = g["maxVal"] | 100.0f;
     strlcpy(gc.unitLabel, g["unitLabel"] | "", sizeof(gc.unitLabel));
+    gc.boostUnits = g["boostUnits"] | false;
     
     gc.secondaryCount = 0;
     JsonArray secs = g["secondaries"];
