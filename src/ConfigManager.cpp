@@ -16,6 +16,7 @@ const char* varsJson = R"====([
   { "id": "speed", "type": "obd", "pid": 13, "formula": 0 },
   { "id": "maf", "type": "obd", "pid": 16, "formula": 4 },
   { "id": "lambda", "type": "obd", "pid": 52, "formula": 7 },
+  { "id": "afr", "type": "obd", "pid": 52, "formula": 7 },
   { "id": "ignition", "type": "obd", "pid": 14, "formula": 6 },
   { "id": "boostPress", "type": "analog", "pin": 18, "multiplier": 30.76, "offset": -28.26 }
 ])====";
@@ -46,7 +47,7 @@ const char* gaugesJson = R"====([
   {
     "type": "standard",
     "name": "Gauge 3: AFR",
-    "mainSourceId": "lambda", 
+    "mainSourceId": "afr", 
     "minVal": 10.0, "maxVal": 20.0,
     "unitLabel": "AFR",
     "secondaries": [
@@ -186,7 +187,12 @@ float getValueForSource(const char* sourceId) {
                     case PID_MAF_AIRFLOW: return obdValues.maf_airflow;
                     case PID_THROTTLE_POS: return obdValues.throttle_pos;
                     case PID_O2_VOLTAGE: return obdValues.o2_voltage;
-                    case PID_O2_SENSOR1_LAMBDA: return obdValues.lambda_ratio;
+                    case PID_O2_SENSOR1_LAMBDA: {
+                         if (strcmp(sourceId, "afr") == 0) {
+                             return obdValues.afr_gasoline;
+                         }
+                         return obdValues.lambda_ratio;
+                     }
                     case PID_ETHANOL_FUEL: return obdValues.ethanol_percent;
                     default: return 0.0f;
                 }
