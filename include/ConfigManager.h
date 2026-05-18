@@ -15,6 +15,7 @@ extern size_t activeGaugeCount;
 
 void loadConfigFromJson();
 float getValueForSource(const char* sourceId);
+void updateAnalogSources();
 
 size_t getCurrentGaugeProfileIndex();
 void applyGaugeProfile(size_t index);

@@ -5,8 +5,6 @@
 // Initialize analog pins and ADC resolution
 void initAnalogInputs();
 
-// Read and compute analog sensors
-void updateAnalogSensors();
 
 // Initialize the QMI8658 IMU
 void initImuSensor();
@@ -16,10 +14,6 @@ void updateImuSensors();
 
 // Manually calibrate IMU offsets
 void calibrateImuZero();
-
-// Getters for Analog
-float getBoostPressure();
-float getBoostSensorVoltage();
 
 // Getters for IMU
 bool isImuReady();

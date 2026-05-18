@@ -7,8 +7,6 @@ static constexpr uint8_t kAnalogSparePin = 17;
 static constexpr float kAdcReferenceVolts = 3.3f;
 static constexpr float kAdcDividerCompensation = 2.0f; // 50/50 divider -> actual sensor voltage is 2x ADC input
 
-static volatile float gBoostSensorVoltage = 0.0f;
-static volatile float gBoostPressure = 0.0f;
 
 // IMU Constants
 static constexpr float kOneGMs2 = 9.807f;
@@ -35,30 +33,12 @@ void initAnalogInputs() {
   analogReadResolution(12);
   analogSetPinAttenuation(kAnalogBoostPin, ADC_11db); // >2.5V range at ADC pin
   analogSetPinAttenuation(kAnalogSparePin, ADC_11db); // reserve pin 18 for future sensor
+  //to do - add the third analog pin
 
   pinMode(kAnalogBoostPin, INPUT);
   pinMode(kAnalogSparePin, INPUT);
 
   Serial.println("[ANALOG] ADC initialized on GPIO17/GPIO18");
-}
-
-void updateAnalogSensors() {
-  const int raw = analogRead(kAnalogBoostPin);
-  const float adcInputVolts = (raw / 4095.0f) * kAdcReferenceVolts;
-  const float sensorVolts = adcInputVolts * kAdcDividerCompensation;
-
-  gBoostSensorVoltage = sensorVolts;
-
-  const float kAtmosphereVolts = 0.91875f;
-  float relativeVolts = sensorVolts - kAtmosphereVolts;
-
-  float gaugeInHg = relativeVolts / 0.0325f;
-
-  if (gaugeInHg < 0.0f) {
-    gBoostPressure = gaugeInHg; 
-  } else {
-    gBoostPressure = gaugeInHg / 2.03602f; 
-  }
 }
 
 void calibrateImuZero() {
@@ -127,8 +107,7 @@ void updateImuSensors() {
   }
 }
 
-float getBoostPressure() { return gBoostPressure; }
-float getBoostSensorVoltage() { return gBoostSensorVoltage; }
+
 bool isImuReady() { return gImuReady; }
 float getLateralG() { return gLateralG; }
 float getLongitudinalG() { return gLongitudinalG; }

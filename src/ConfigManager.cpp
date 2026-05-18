@@ -189,16 +189,22 @@ float getValueForSource(const char* sourceId) {
                     default: return 0.0f;
                 }
             } else if (ds.type == SOURCE_ANALOG) {
-                if (strcmp(sourceId, "boostPress") == 0) {
-                    return getBoostPressure();
-                }
-                // Generic fallback for other analog pins later
-                int raw = analogRead(ds.pin);
-                return (float)raw * ds.multiplier + ds.offset;
+                return ds.cachedValue;
             }
         }
     }
     return 0.0f;
+}
+
+void updateAnalogSources() {
+    for (size_t i = 0; i < activeDataSourceCount; i++) {
+        if (activeDataSources[i].type == SOURCE_ANALOG) {
+            int raw = analogRead(activeDataSources[i].pin);
+            // Apply the formula based on generic math for analog inputs
+            // The JSON config should provide the necessary multiplier and offset
+            activeDataSources[i].cachedValue = ((float)raw * activeDataSources[i].multiplier) + activeDataSources[i].offset;
+        }
+    }
 }
 
 static size_t gCurrentGaugeProfileIndex = 0;

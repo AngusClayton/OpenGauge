@@ -19,4 +19,6 @@ struct DataSourceConfig {
     uint8_t pin;
     float multiplier;
     float offset;
+    
+    float cachedValue;
 };

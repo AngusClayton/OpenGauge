@@ -64,7 +64,7 @@ void obdTask(void *pvParameters) {
     }
 
     if ((now - lastAnalogMs) >= analogIntervalMs) {
-      updateAnalogSensors();
+      updateAnalogSources();
       lastAnalogMs = now;
     }
 
@@ -123,7 +123,7 @@ void setup() {
   loadConfigFromJson();
 
   initAnalogInputs();
-  updateAnalogSensors();
+  updateAnalogSources();
 
   // Initialize LCD and display buffer after OBD, matching the original project more closely.
   initLCD();
