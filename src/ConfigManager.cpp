@@ -259,7 +259,12 @@ static size_t gCurrentGaugeProfileIndex = 0;
  * @return size_t Current active gauge index.
  */
 size_t getCurrentGaugeProfileIndex() {
-    return gCurrentGaugeProfileIndex;
+  return gCurrentGaugeProfileIndex;
+}
+
+bool isAccelerationTimerProfileActive() {
+  return gCurrentGaugeProfileIndex < activeGaugeCount &&
+         activeGauges[gCurrentGaugeProfileIndex].type == GAUGE_TYPE_ACCEL_TIMER;
 }
 
 /**

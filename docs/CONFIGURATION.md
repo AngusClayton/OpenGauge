@@ -101,7 +101,8 @@ more than three secondary values so each value can stay readable.
 The default `accelTimer` profile uses the OBD `speed` source. It arms at
 1 km/h or below. It starts when speed rises above 1 km/h. It stops when speed
 reaches 100 km/h. The result remains on screen until the vehicle stops and the
-timer arms again.
+timer arms again. While this profile is active, the firmware requests speed at
+50 Hz and updates the timer from the OBD task, not the display task.
 
 Use a profile like this:
 

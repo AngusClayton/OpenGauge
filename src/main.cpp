@@ -40,7 +40,6 @@ static uint32_t gLastSwipeMs = 0; // Debounce tracking timestamp for touch swipe
  */
 void obdTask(void *pvParameters) {
   const TickType_t xLoopDelay = pdMS_TO_TICKS(10);
-  const uint32_t requestIntervalMs = 50;
   const uint32_t analogIntervalMs = 20;
   uint32_t lastRequestMs = 0;
   uint32_t lastAnalogMs = 0;
@@ -69,6 +68,9 @@ void obdTask(void *pvParameters) {
     }
 
     // Send one PID request per interval (mirrors the original single-request cadence).
+    // The timer screen requests only vehicle speed. Poll it at 50 Hz so its
+    // start and finish timestamps do not depend on the 100 ms display loop.
+    const uint32_t requestIntervalMs = isAccelerationTimerProfileActive() ? 20 : 50;
     if ((now - lastRequestMs) >= requestIntervalMs) {
       if (getNextScheduledPid(&nextPid)) {
         sendObdFrame(nextPid);
@@ -84,6 +86,9 @@ void obdTask(void *pvParameters) {
 
     // Compute display values from whatever is currently cached.
     computeOBDValuesFromCache();
+    if (isAccelerationTimerProfileActive()) {
+      updateAccelerationTimer();
+    }
 
     vTaskDelay(xLoopDelay);
   }

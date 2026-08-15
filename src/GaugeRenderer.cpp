@@ -433,19 +433,14 @@ enum AccelerationTimerState {
   ACCEL_TIMER_COMPLETE,
 };
 
-static AccelerationTimerState gAccelerationTimerState = ACCEL_TIMER_ARMED;
-static uint32_t gAccelerationTimerStartMs = 0;
-static uint32_t gAccelerationTimerElapsedMs = 0;
+static volatile AccelerationTimerState gAccelerationTimerState = ACCEL_TIMER_ARMED;
+static volatile uint32_t gAccelerationTimerStartMs = 0;
+static volatile uint32_t gAccelerationTimerElapsedMs = 0;
 
 /**
- * @brief Render an automatic 0-100 km/h timer from the OBD vehicle-speed PID.
- *
- * The timer arms at 1 km/h or below, starts as the vehicle moves above 1 km/h,
- * and stops at 100 km/h. Stopping the vehicle arms it for the next run.
+ * @brief Advance the 0-100 timer state from the high-frequency OBD task.
  */
-void renderAccelerationTimerGauge() {
-  Paint_Clear(BLACK);
-
+void updateAccelerationTimer() {
   constexpr float kTimerArmSpeedKph = 1.0f;
   constexpr float kTimerFinishSpeedKph = 100.0f;
   const float speedKph = (float)obdValues.vehicle_speed_kmh;
@@ -461,6 +456,23 @@ void renderAccelerationTimerGauge() {
     gAccelerationTimerElapsedMs = now - gAccelerationTimerStartMs;
     gAccelerationTimerState = ACCEL_TIMER_COMPLETE;
   }
+}
+
+/**
+ * @brief Render an automatic 0-100 km/h timer from the OBD vehicle-speed PID.
+ *
+ * The timer arms at 1 km/h or below, starts as the vehicle moves above 1 km/h,
+ * and stops at 100 km/h. Stopping the vehicle arms it for the next run.
+ */
+void renderAccelerationTimerGauge() {
+  Paint_Clear(BLACK);
+
+  constexpr float kTimerFinishSpeedKph = 100.0f;
+  const float speedKph = (float)obdValues.vehicle_speed_kmh;
+  const uint32_t now = millis();
+  // Keep direct renderer calls, including native previews, self-contained.
+  // During normal use the OBD task updates this state at a higher cadence.
+  updateAccelerationTimer();
 
   const float speedSweep = 240.0f * clampFloat(speedKph, 0.0f, kTimerFinishSpeedKph) / kTimerFinishSpeedKph;
   drawClockArc(120, 120, 112, 14, 240.0f, 240.0f, GRAY);

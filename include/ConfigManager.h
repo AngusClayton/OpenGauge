@@ -21,3 +21,6 @@ size_t getCurrentGaugeProfileIndex();
 void applyGaugeProfile(size_t index);
 void nextGaugeProfile();
 void prevGaugeProfile();
+
+// True while the automatic 0-100 timer screen is active.
+bool isAccelerationTimerProfileActive();
