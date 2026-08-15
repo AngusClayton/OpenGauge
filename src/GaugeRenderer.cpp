@@ -485,24 +485,24 @@ void renderGenericGauge(const GaugeConfig& config) {
   } else {
       snprintf(buffer, sizeof(buffer), "%.1f", (double)mainVal);
   }
-  // Four-character readings (e.g. 12.4) can use a crisp 2x bitmap font.
-  // Fall back to the largest native font for longer negative values so they
-  // remain clear without colliding with the surrounding arc.
+  // Four-character readings (e.g. 12.4) use a crisp 2x bitmap font. Scaling
+  // the 16px face gives the value emphasis without touching the dial arc.
+  // Fall back to the largest native font for longer negative values.
   if (strlen(buffer) <= 4) {
-      drawCenteredTextScaled(66, buffer, &Font_nokia_20, 2, WHITE, BLACK);
+      drawCenteredTextScaled(60, buffer, &Font_nokia_16, 2, WHITE, BLACK);
   } else {
-      drawCenteredTextFixed(74, buffer, &Font_nokia_24, WHITE, BLACK);
+      drawCenteredTextFixed(64, buffer, &Font_nokia_24, WHITE, BLACK);
   }
   
   // Custom case: dynamically adjust unit labels if handling vacuum/boost scales
   if (config.boostUnits) {
       if (mainVal < 0.0f) {
-          drawCenteredTextFixed(112, "Boost (inHg)", &Font_nokia_12, WHITE, BLACK);
+          drawCenteredTextFixed(102, "Boost (inHg)", &Font_nokia_12, WHITE, BLACK);
       } else {
-          drawCenteredTextFixed(112, "Boost (PSI)", &Font_nokia_12, WHITE, BLACK);
+          drawCenteredTextFixed(102, "Boost (PSI)", &Font_nokia_12, WHITE, BLACK);
       }
   } else {
-      drawCenteredTextFixed(112, config.unitLabel, &Font_nokia_12, WHITE, BLACK);
+      drawCenteredTextFixed(102, config.unitLabel, &Font_nokia_12, WHITE, BLACK);
   }
 
   // Draw any active secondary readouts below the primary dial values
@@ -521,7 +521,9 @@ void renderGenericGauge(const GaugeConfig& config) {
           color = waterTempColor(secVal);
       }
       
-      drawCenteredTextFixed((UWORD)sec.posY, buffer, &Font_nokia_16, color, BLACK);
+      // Secondary metrics must remain inside the narrower lower portion of
+      // the round display; keep the primary value visually dominant.
+      drawCenteredTextFixed((UWORD)sec.posY, buffer, &Font_nokia_12, color, BLACK);
   }
 
   drawStatusIfNeeded(160, GRAY);

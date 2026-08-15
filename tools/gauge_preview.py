@@ -25,9 +25,14 @@ def png(raw_path, output, scale):
     for y in range(240):
         row=bytearray()
         for x in range(240):
-            # GUI_Paint stores bytes in the order sent over SPI (RGB565 MSB first).
-            c=struct.unpack_from('>H',raw,2*(y*240+x))[0]
-            rgb=((c>>11&31)*255//31,(c>>5&63)*255//63,(c&31)*255//31)
+            # Mark the square framebuffer area that is physically hidden by the
+            # round LCD. This is preview-only and never alters production output.
+            if (x - 119.5) ** 2 + (y - 119.5) ** 2 > 120 ** 2:
+                rgb=(96,96,96)
+            else:
+                # GUI_Paint stores bytes in the order sent over SPI (RGB565 MSB first).
+                c=struct.unpack_from('>H',raw,2*(y*240+x))[0]
+                rgb=((c>>11&31)*255//31,(c>>5&63)*255//63,(c&31)*255//31)
             row.extend(bytes(rgb)*scale)
         for _ in range(scale): rows.append(0); rows.extend(row)
     def chunk(t,d): return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)

@@ -16,6 +16,8 @@ python tools/gauge_preview.py --type gmeter --value lateralG=-0.72 --value longi
 
 `--scale` enlarges physical pixels with nearest-neighbour scaling. A secondary
 metric has the form `source,prefix,suffix,y[,dynamic]` and can be repeated.
+Pixels outside the physical round LCD are shown in grey by the PNG converter;
+the in-bounds image remains the exact production RGB565 framebuffer.
 
 ## What updates automatically
 
