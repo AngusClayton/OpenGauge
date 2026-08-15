@@ -489,31 +489,33 @@ void renderGenericGauge(const GaugeConfig& config) {
   // the 16px face gives the value emphasis without touching the dial arc.
   // Fall back to the largest native font for longer negative values.
   if (strlen(buffer) <= 4) {
-      drawCenteredTextScaled(60, buffer, &Font_nokia_16, 2, WHITE, BLACK);
+      drawCenteredTextScaled(58, buffer, &Font_nokia_16, 2, WHITE, BLACK);
   } else {
-      drawCenteredTextFixed(64, buffer, &Font_nokia_24, WHITE, BLACK);
+      drawCenteredTextFixed(62, buffer, &Font_nokia_24, WHITE, BLACK);
   }
   
   // Custom case: dynamically adjust unit labels if handling vacuum/boost scales
   if (config.boostUnits) {
       if (mainVal < 0.0f) {
-          drawCenteredTextFixed(102, "Boost (inHg)", &Font_nokia_12, WHITE, BLACK);
+          drawCenteredTextFixed(94, "Boost (inHg)", &Font_nokia_12, WHITE, BLACK);
       } else {
-          drawCenteredTextFixed(102, "Boost (PSI)", &Font_nokia_12, WHITE, BLACK);
+          drawCenteredTextFixed(94, "Boost (PSI)", &Font_nokia_12, WHITE, BLACK);
       }
   } else {
-      drawCenteredTextFixed(102, config.unitLabel, &Font_nokia_12, WHITE, BLACK);
+      drawCenteredTextFixed(94, config.unitLabel, &Font_nokia_12, WHITE, BLACK);
   }
 
-  // Draw any active secondary readouts below the primary dial values
+  // Draw secondary metrics as vertically stacked value/label pairs. Keeping
+  // labels separate lets the useful number remain large without a long line
+  // of text running outside the circular display.
   for (uint8_t i = 0; i < config.secondaryCount; i++) {
       const SecondaryMetric& sec = config.secondaries[i];
       float secVal = getValueForSource(sec.sourceId);
       
       if (fabsf(secVal) >= 100.0f) {
-          snprintf(buffer, sizeof(buffer), "%s%.0f%s", sec.prefix, (double)secVal, sec.suffix);
+          snprintf(buffer, sizeof(buffer), "%.0f%s", (double)secVal, sec.suffix);
       } else {
-          snprintf(buffer, sizeof(buffer), "%s%.1f%s", sec.prefix, (double)secVal, sec.suffix);
+          snprintf(buffer, sizeof(buffer), "%.1f%s", (double)secVal, sec.suffix);
       }
       
       UWORD color = GBLUE;
@@ -521,9 +523,17 @@ void renderGenericGauge(const GaugeConfig& config) {
           color = waterTempColor(secVal);
       }
       
-      // Secondary metrics must remain inside the narrower lower portion of
-      // the round display; keep the primary value visually dominant.
-      drawCenteredTextFixed((UWORD)sec.posY, buffer, &Font_nokia_12, color, BLACK);
+      const UWORD valueY = config.secondaryCount <= 2 ? (UWORD)(120 + i * 54) : (UWORD)(102 + i * 44);
+      const UWORD labelY = config.secondaryCount <= 2 ? (UWORD)(144 + i * 54) : (UWORD)(124 + i * 44);
+      drawCenteredTextFixed(valueY, buffer, &Font_nokia_20, color, BLACK);
+
+      char label[sizeof(sec.prefix)];
+      snprintf(label, sizeof(label), "%s", sec.prefix);
+      size_t labelLength = strlen(label);
+      while (labelLength > 0 && (label[labelLength - 1] == ' ' || label[labelLength - 1] == ':')) {
+          label[--labelLength] = '\0';
+      }
+      drawCenteredTextFixed(labelY, label, &Font_nokia_12, GRAY, BLACK);
   }
 
   drawStatusIfNeeded(160, GRAY);
