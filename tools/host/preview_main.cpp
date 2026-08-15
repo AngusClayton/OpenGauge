@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -84,6 +85,17 @@ int main(int argc, char** argv) {
   }
   values["lateralG"] = lateralG = values["lateralG"];
   values["longitudinalG"] = longitudinalG = values["longitudinalG"];
+  // Preview a recent 5-second trail plus optional older 30-second peaks.
+  // peakLat/peakLong default to the current values when not supplied.
+  const float previewPeakLat = values.count("peakLat") ? values["peakLat"] : lateralG;
+  const float previewPeakLong = values.count("peakLong") ? values["peakLong"] : longitudinalG;
+  for (size_t i = 0; i < 50; i++) {
+    const float fade = 1.0f - (float)i / 60.0f;
+    peaks[i] = {lateralG * fade + 0.12f * sinf((float)i * 0.45f),
+                longitudinalG * fade + 0.08f * cosf((float)i * 0.45f),
+                fakeMillis - (uint32_t)(i * 100)};
+  }
+  peaks[50] = {previewPeakLat, previewPeakLong, fakeMillis - 15000};
   obdValues.rpm=(uint16_t)std::clamp(values["rpm"],0.0f,65535.0f);
   obdValues.vehicle_speed_kmh=(uint8_t)std::clamp(values["speed"],0.0f,255.0f);
   cfg.type = type=="shiftlight"?GAUGE_TYPE_SHIFTLIGHT:type=="gmeter"?GAUGE_TYPE_GMETER:GAUGE_TYPE_STANDARD;

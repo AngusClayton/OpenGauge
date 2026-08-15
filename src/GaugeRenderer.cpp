@@ -435,30 +435,46 @@ void renderGmeterGauge() {
   const int radius = 72;
   const int dotRadius = 7;
   const int maxDotTravel = radius - dotRadius - 2;
+  static constexpr UWORD kGmeterGridColor = 0x4208;
+  constexpr float kGmeterDisplayRange = 1.5f;
+  constexpr uint32_t kGforceTrailWindowMs = 5000;
+  constexpr uint32_t kGforcePeakWindowMs = 30000;
 
-  Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)radius, GRAY, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
-  Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)(radius / 2), GRAY, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
-  Paint_DrawLine((UWORD)(cx - radius), (UWORD)cy, (UWORD)(cx + radius), (UWORD)cy, GRAY, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
-  Paint_DrawLine((UWORD)cx, (UWORD)(cy - radius), (UWORD)cx, (UWORD)(cy + radius), GRAY, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
-  Paint_DrawCircle((UWORD)cx, (UWORD)cy, 2, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-
-  Paint_DrawString_EN(cx + 51, cy - 57, "1.5g", &Font_nokia_8, BLACK, GRAY);
-  Paint_DrawString_EN(cx + 25, cy - 31, "0.75g", &Font_nokia_8, BLACK, GRAY);
+  Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)radius, kGmeterGridColor, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
+  Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)(radius / 2), kGmeterGridColor, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
+  Paint_DrawLine((UWORD)(cx - radius), (UWORD)cy, (UWORD)(cx + radius), (UWORD)cy, kGmeterGridColor, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
+  Paint_DrawLine((UWORD)cx, (UWORD)(cy - radius), (UWORD)cx, (UWORD)(cy + radius), kGmeterGridColor, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
+  Paint_DrawCircle((UWORD)cx, (UWORD)cy, 2, kGmeterGridColor, DOT_PIXEL_1X1, DRAW_FILL_FULL);
+  drawTextFixed(cx + 51, cy - 57, "1.5g", &Font_nokia_8, GRAY, BLACK);
+  drawTextFixed(cx + 25, cy - 31, "0.75g", &Font_nokia_8, GRAY, BLACK);
 
   if (!isImuReady()) {
-    drawCenteredTextFixed(100, "IMU OFFLINE", &Font_nokia_12, RED, BLACK);
-    drawCenteredTextFixed(184, "Check QMI8658 wiring", &Font_nokia_8, GRAY, BLACK);
+    drawCenteredTextFixed(92, "IMU OFFLINE", &Font_nokia_12, RED, BLACK);
+    drawCenteredTextFixed(174, "Check QMI8658 wiring", &Font_nokia_8, GRAY, BLACK);
     LCD_1IN28_Display(BlackImage);
     return;
   }
 
+  drawStatusIfNeeded(16, GRAY);
+
   const uint32_t now = millis();
   const GForcePeak* gGforcePeakBuffer = getGforcePeakBuffer();
-  float kGmeterDisplayRange = 1.5f;
-  uint32_t kGforceTrailWindowMs = 5000;
+  float peakLateral = 0.0f;
+  float peakLongitudinal = 0.0f;
   for (size_t i = 0; i < kGforcePeakBufferSize; i++) {
     const GForcePeak& peak = gGforcePeakBuffer[i];
-    if (peak.timestampMs == 0 || (now - peak.timestampMs) > kGforceTrailWindowMs) {
+    if (peak.timestampMs == 0 || (now - peak.timestampMs) > kGforcePeakWindowMs) {
+      continue;
+    }
+
+    if (fabsf(peak.lateralG) > fabsf(peakLateral)) {
+      peakLateral = peak.lateralG;
+    }
+    if (fabsf(peak.longitudinalG) > fabsf(peakLongitudinal)) {
+      peakLongitudinal = peak.longitudinalG;
+    }
+
+    if ((now - peak.timestampMs) > kGforceTrailWindowMs) {
       continue;
     }
     const float lateral = clampFloat(peak.lateralG, -kGmeterDisplayRange, kGmeterDisplayRange);
@@ -476,16 +492,17 @@ void renderGmeterGauge() {
   Paint_DrawCircle((UWORD)dotX, (UWORD)dotY, (UWORD)dotRadius, RED, DOT_PIXEL_1X1, DRAW_FILL_FULL);
 
   char buffer[64];
-  snprintf(buffer, sizeof(buffer), "Lat: %+0.2fg", (double)getLateralG());
-  drawCenteredTextFixed(198, buffer, &Font_nokia_8, GBLUE, BLACK);
+  drawCenteredTextFixed(156, "PEAK", &Font_nokia_8, GRAY, BLACK);
+  drawTextFixed(54, 170, "LAT", &Font_nokia_8, GRAY, BLACK);
+  drawTextFixed(156, 170, "LONG", &Font_nokia_8, GRAY, BLACK);
 
-  snprintf(buffer, sizeof(buffer), "Long: %+0.2fg", (double)getLongitudinalG());
-  drawCenteredTextFixed(212, buffer, &Font_nokia_8, WHITE, BLACK);
+  snprintf(buffer, sizeof(buffer), "%+.2f", (double)peakLateral);
+  const int lateralWidth = textWidthPx(buffer, &Font_nokia_16);
+  drawTextFixed((UWORD)(70 - lateralWidth / 2), 182, buffer, &Font_nokia_16, GBLUE, BLACK);
 
-  snprintf(buffer, sizeof(buffer), "Forward ^");
-  drawCenteredTextFixed(226, buffer, &Font_nokia_8, GRAY, BLACK);
-
-  drawStatusIfNeeded(16, GRAY);
+  snprintf(buffer, sizeof(buffer), "%+.2f", (double)peakLongitudinal);
+  const int longitudinalWidth = textWidthPx(buffer, &Font_nokia_16);
+  drawTextFixed((UWORD)(170 - longitudinalWidth / 2), 182, buffer, &Font_nokia_16, WHITE, BLACK);
 
   LCD_1IN28_Display(BlackImage);
 }

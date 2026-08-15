@@ -26,5 +26,6 @@ struct GForcePeak {
   float longitudinalG;
   uint32_t timestampMs;
 };
-constexpr size_t kGforcePeakBufferSize = 50;
+// 10 Hz samples retained for 30 seconds of peak-history calculations.
+constexpr size_t kGforcePeakBufferSize = 300;
 const GForcePeak* getGforcePeakBuffer();

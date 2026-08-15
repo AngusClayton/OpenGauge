@@ -19,6 +19,11 @@ metric has the form `source,prefix,suffix,y[,dynamic]` and can be repeated.
 Pixels outside the physical round LCD are shown in grey by the PNG converter;
 the in-bounds image remains the exact production RGB565 framebuffer.
 
+For G-meter previews, pass optional `--value peakLat=-0.95` and
+`--value peakLong=0.68` values to simulate a stronger reading from within the
+30-second peak window. The current `lateralG`/`longitudinalG` values create the
+recent dot trail.
+
 ## What updates automatically
 
 Changes inside the existing production renderer functions, drawing primitives,
