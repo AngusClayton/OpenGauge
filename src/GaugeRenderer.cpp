@@ -210,6 +210,59 @@ void drawCenteredTextScaled(UWORD y, const char* text, sFONT* font, uint8_t scal
 }
 
 /**
+ * @brief Centre a scaled bitmap string by its lit pixels, not its fixed font cell.
+ *
+ * Large single glyphs (notably the shift gear) can have substantial blank space
+ * within their font cell, which makes ordinary fixed-cell centring look offset.
+ */
+void drawCenteredTextScaledByInk(UWORD y, const char* text, sFONT* font, uint8_t scale, UWORD fg, UWORD bg) {
+  if (text == NULL || font == NULL || scale == 0) {
+    return;
+  }
+
+  const uint16_t rowBytes = font->Width / 8 + (font->Width % 8 ? 1 : 0);
+  int minInkX = 32767;
+  int maxInkX = -1;
+  for (size_t character = 0; text[character] != '\0'; character++) {
+    const uint32_t charOffset = (text[character] - ' ') * font->Height * rowBytes;
+    const unsigned char* glyph = &font->table[charOffset];
+    for (uint16_t row = 0; row < font->Height; row++) {
+      for (uint16_t col = 0; col < font->Width; col++) {
+        if (glyph[(row * rowBytes) + (col / 8)] & (0x80 >> (col % 8))) {
+          const int inkX = (int)(character * font->Width) + col;
+          if (inkX < minInkX) minInkX = inkX;
+          if (inkX > maxInkX) maxInkX = inkX;
+        }
+      }
+    }
+  }
+
+  if (maxInkX < minInkX) {
+    return;
+  }
+
+  const int startX = (240 - (maxInkX - minInkX + 1) * scale) / 2 - minInkX * scale;
+  int charX = startX;
+  while (*text != '\0') {
+    const uint32_t charOffset = (*text - ' ') * font->Height * rowBytes;
+    const unsigned char* glyph = &font->table[charOffset];
+    for (uint16_t row = 0; row < font->Height; row++) {
+      for (uint16_t col = 0; col < font->Width; col++) {
+        const UWORD color = (glyph[(row * rowBytes) + (col / 8)] & (0x80 >> (col % 8))) ? fg : bg;
+        for (uint8_t sy = 0; sy < scale; sy++) {
+          for (uint8_t sx = 0; sx < scale; sx++) {
+            Paint_SetPixel((UWORD)(charX + col * scale + sx),
+                           (UWORD)(y + row * scale + sy), color);
+          }
+        }
+      }
+    }
+    charX += font->Width * scale;
+    text++;
+  }
+}
+
+/**
  * @brief Displays connection/fault warnings at the top/bottom if OBD bus drops out.
  */
 void drawStatusIfNeeded(UWORD y, UWORD color) {
@@ -360,28 +413,16 @@ void renderShiftLightGauge() {
   } else {
     snprintf(buffer, sizeof(buffer), "-");
   }
-  drawCenteredTextFixed(72, buffer, &Font_nokia_20, WHITE, BLACK);
-  drawCenteredTextFixed(102, "GEAR", &Font_nokia_8, GRAY, BLACK);
+  drawCenteredTextScaledByInk(38, buffer, &Font_nokia_24, 3, WHITE, BLACK);
+  drawCenteredTextFixed(112, "GEAR", &Font_nokia_12, GRAY, BLACK);
 
-  snprintf(buffer, sizeof(buffer), "RPM: %u", (unsigned int)obdValues.rpm);
-  drawCenteredTextFixed(136, buffer, &Font_nokia_12, arcColor, BLACK);
+  snprintf(buffer, sizeof(buffer), "%u", (unsigned int)obdValues.rpm);
+  drawCenteredTextFixed(132, buffer, &Font_nokia_20, arcColor, BLACK);
+  drawCenteredTextFixed(153, "RPM", &Font_nokia_8, GRAY, BLACK);
 
-  snprintf(buffer, sizeof(buffer), "SPD: %u", (unsigned int)obdValues.vehicle_speed_kmh);
-  drawCenteredTextFixed(156, buffer, &Font_nokia_12, GBLUE, BLACK);
-  drawCenteredTextFixed(170, "km/h", &Font_nokia_8, GRAY, BLACK);
-
-  if (gear > 0 && targetShiftRpm > 0) {
-    snprintf(buffer, sizeof(buffer), "Shift @ %u", (unsigned int)targetShiftRpm);
-    drawCenteredTextFixed(184, buffer, &Font_nokia_8, arcColor, BLACK);
-  } else if (gear == 6) {
-    drawCenteredTextFixed(184, "Top Gear", &Font_nokia_8, GRAY, BLACK);
-  } else if (gear == 0) {
-    drawCenteredTextFixed(184, "Neutral / Clutch", &Font_nokia_8, GRAY, BLACK);
-  } else {
-    drawCenteredTextFixed(184, "Gear Detecting", &Font_nokia_8, GRAY, BLACK);
-  }
-
-  drawStatusIfNeeded(206, GRAY);
+  snprintf(buffer, sizeof(buffer), "%u", (unsigned int)obdValues.vehicle_speed_kmh);
+  drawCenteredTextFixed(170, buffer, &Font_nokia_20, GBLUE, BLACK);
+  drawCenteredTextFixed(192, "km/h", &Font_nokia_8, GRAY, BLACK);
 
   LCD_1IN28_Display(BlackImage);
 }
