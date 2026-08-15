@@ -171,6 +171,45 @@ void drawCenteredTextFixed(UWORD y, const char* text, sFONT* font, UWORD fg, UWO
 }
 
 /**
+ * @brief Draw a bundled bitmap font at an integer scale without antialiasing.
+ *
+ * This keeps the LCD's deliberately crisp pixel style while allowing important
+ * values to be much larger than the biggest bundled font.
+ */
+void drawCenteredTextScaled(UWORD y, const char* text, sFONT* font, uint8_t scale, UWORD fg, UWORD bg) {
+  if (text == NULL || font == NULL || scale == 0) {
+    return;
+  }
+
+  const int width = (int)strlen(text) * (int)font->Width * (int)scale;
+  int startX = (240 - width) / 2;
+  if (startX < 0) {
+    startX = 0;
+  }
+
+  int charX = startX;
+  const uint16_t rowBytes = font->Width / 8 + (font->Width % 8 ? 1 : 0);
+  while (*text != '\0') {
+    const uint32_t charOffset = (*text - ' ') * font->Height * rowBytes;
+    const unsigned char* glyph = &font->table[charOffset];
+    for (uint16_t row = 0; row < font->Height; row++) {
+      for (uint16_t col = 0; col < font->Width; col++) {
+        const bool set = glyph[(row * rowBytes) + (col / 8)] & (0x80 >> (col % 8));
+        const UWORD color = set ? fg : bg;
+        for (uint8_t sy = 0; sy < scale; sy++) {
+          for (uint8_t sx = 0; sx < scale; sx++) {
+            Paint_SetPixel((UWORD)(charX + col * scale + sx),
+                           (UWORD)(y + row * scale + sy), color);
+          }
+        }
+      }
+    }
+    charX += font->Width * scale;
+    text++;
+  }
+}
+
+/**
  * @brief Displays connection/fault warnings at the top/bottom if OBD bus drops out.
  */
 void drawStatusIfNeeded(UWORD y, UWORD color) {
@@ -446,17 +485,24 @@ void renderGenericGauge(const GaugeConfig& config) {
   } else {
       snprintf(buffer, sizeof(buffer), "%.1f", (double)mainVal);
   }
-  drawCenteredTextFixed(80, buffer, &Font_nokia_20, WHITE, BLACK);
+  // Four-character readings (e.g. 12.4) can use a crisp 2x bitmap font.
+  // Fall back to the largest native font for longer negative values so they
+  // remain clear without colliding with the surrounding arc.
+  if (strlen(buffer) <= 4) {
+      drawCenteredTextScaled(66, buffer, &Font_nokia_20, 2, WHITE, BLACK);
+  } else {
+      drawCenteredTextFixed(74, buffer, &Font_nokia_24, WHITE, BLACK);
+  }
   
   // Custom case: dynamically adjust unit labels if handling vacuum/boost scales
   if (config.boostUnits) {
       if (mainVal < 0.0f) {
-          drawCenteredTextFixed(108, "Boost (inHg)", &Font_nokia_8, WHITE, BLACK);
+          drawCenteredTextFixed(112, "Boost (inHg)", &Font_nokia_12, WHITE, BLACK);
       } else {
-          drawCenteredTextFixed(108, "Boost (PSI)", &Font_nokia_8, WHITE, BLACK);
+          drawCenteredTextFixed(112, "Boost (PSI)", &Font_nokia_12, WHITE, BLACK);
       }
   } else {
-      drawCenteredTextFixed(108, config.unitLabel, &Font_nokia_8, WHITE, BLACK);
+      drawCenteredTextFixed(112, config.unitLabel, &Font_nokia_12, WHITE, BLACK);
   }
 
   // Draw any active secondary readouts below the primary dial values
@@ -475,7 +521,7 @@ void renderGenericGauge(const GaugeConfig& config) {
           color = waterTempColor(secVal);
       }
       
-      drawCenteredTextFixed((UWORD)sec.posY, buffer, &Font_nokia_12, color, BLACK);
+      drawCenteredTextFixed((UWORD)sec.posY, buffer, &Font_nokia_16, color, BLACK);
   }
 
   drawStatusIfNeeded(160, GRAY);
