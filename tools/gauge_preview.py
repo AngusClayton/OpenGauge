@@ -42,7 +42,7 @@ def png(raw_path, output, scale):
 
 def main():
     p=argparse.ArgumentParser(description='Preview using the real 32GUAGE C++ renderer')
-    p.add_argument('--type',choices=('standard','shiftlight','gmeter'),default='standard')
+    p.add_argument('--type',choices=('standard','shiftlight','gmeter','accelTimer'),default='standard')
     p.add_argument('--value',action='append',default=[],metavar='NAME=NUMBER')
     p.add_argument('--main-source',default='value'); p.add_argument('--min',type=float,default=0); p.add_argument('--max',type=float,default=100)
     p.add_argument('--unit',default=''); p.add_argument('--boost-units',action='store_true')

@@ -79,6 +79,13 @@ const char* gaugesJson = R"====([
       { "sourceId": "rpm" },
       { "sourceId": "speed" }
     ]
+  },
+  {
+    "type": "accelTimer",
+    "name": "Gauge 7: 0-100 Timer",
+    "mainSourceId": "speed",
+    "minVal": 0.0, "maxVal": 100.0,
+    "unitLabel": "km/h"
   }
 ])====";
 
@@ -140,6 +147,7 @@ void loadConfigFromJson() {
     if (strcmp(typeStr, "standard") == 0) gc.type = GAUGE_TYPE_STANDARD;
     else if (strcmp(typeStr, "gmeter") == 0) gc.type = GAUGE_TYPE_GMETER;
     else if (strcmp(typeStr, "shiftlight") == 0) gc.type = GAUGE_TYPE_SHIFTLIGHT;
+    else if (strcmp(typeStr, "accelTimer") == 0) gc.type = GAUGE_TYPE_ACCEL_TIMER;
     
     strlcpy(gc.name, g["name"] | "", sizeof(gc.name));
     strlcpy(gc.mainSourceId, g["mainSourceId"] | "", sizeof(gc.mainSourceId));

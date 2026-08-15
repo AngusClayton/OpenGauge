@@ -5,7 +5,8 @@
 enum GaugeType {
     GAUGE_TYPE_STANDARD,
     GAUGE_TYPE_GMETER,
-    GAUGE_TYPE_SHIFTLIGHT
+    GAUGE_TYPE_SHIFTLIGHT,
+    GAUGE_TYPE_ACCEL_TIMER
 };
 
 struct SecondaryMetric {

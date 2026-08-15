@@ -20,6 +20,7 @@
 void renderGenericGauge(const GaugeConfig& config);
 void renderShiftLightGauge();
 void renderGmeterGauge();
+void renderAccelerationTimerGauge();
 
 UWORD framebuffer[240 * 240];
 UWORD* BlackImage = framebuffer;
@@ -48,7 +49,7 @@ const GForcePeak* getGforcePeakBuffer() { return peaks; }
 void LCD_1IN28_Display(UWORD*) {}
 
 static void usage() {
-  std::puts("preview_host --type standard|shiftlight|gmeter [options] --raw output.rgb565\n"
+  std::puts("preview_host --type standard|shiftlight|gmeter|accelTimer [options] --raw output.rgb565\n"
             "  --value name=number  --main-source name  --min n  --max n  --unit text\n"
             "  --secondary source,prefix,suffix,y[,dynamic]  --boost-units");
 }
@@ -98,13 +99,30 @@ int main(int argc, char** argv) {
   peaks[50] = {previewPeakLat, previewPeakLong, fakeMillis - 15000};
   obdValues.rpm=(uint16_t)std::clamp(values["rpm"],0.0f,65535.0f);
   obdValues.vehicle_speed_kmh=(uint8_t)std::clamp(values["speed"],0.0f,255.0f);
-  cfg.type = type=="shiftlight"?GAUGE_TYPE_SHIFTLIGHT:type=="gmeter"?GAUGE_TYPE_GMETER:GAUGE_TYPE_STANDARD;
+  cfg.type = type=="shiftlight" ? GAUGE_TYPE_SHIFTLIGHT :
+             type=="gmeter" ? GAUGE_TYPE_GMETER :
+             type=="accelTimer" ? GAUGE_TYPE_ACCEL_TIMER : GAUGE_TYPE_STANDARD;
   std::snprintf(cfg.mainSourceId,sizeof cfg.mainSourceId,"%s",mainSource.c_str());
   std::snprintf(cfg.unitLabel,sizeof cfg.unitLabel,"%s",unit.c_str());
   cfg.minVal=minVal; cfg.maxVal=maxVal; cfg.boostUnits=boostUnits;
   Paint_NewImage((UBYTE*)BlackImage,240,240,ROTATE_0,BLACK); Paint_SetScale(65);
   if(type=="shiftlight") renderShiftLightGauge();
   else if(type=="gmeter") renderGmeterGauge();
+  else if(type=="accelTimer") {
+    // A preview process has no prior display frames. Create one stopped frame,
+    // then one moving frame, so the final frame shows a real timer state.
+    const uint8_t finalSpeed = obdValues.vehicle_speed_kmh;
+    const uint32_t previewElapsedMs = (uint32_t)std::max(0.0f, values["timerMs"]);
+    fakeMillis = 0;
+    obdValues.vehicle_speed_kmh = 0;
+    renderAccelerationTimerGauge();
+    fakeMillis = 100;
+    obdValues.vehicle_speed_kmh = 2;
+    renderAccelerationTimerGauge();
+    fakeMillis += previewElapsedMs;
+    obdValues.vehicle_speed_kmh = finalSpeed;
+    renderAccelerationTimerGauge();
+  }
   else renderGenericGauge(cfg);
   std::ofstream out(raw,std::ios::binary); out.write((char*)framebuffer,sizeof framebuffer);
   if(!out) { std::fprintf(stderr,"Cannot write %s\n",raw.c_str()); return 1; }

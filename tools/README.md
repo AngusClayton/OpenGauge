@@ -32,6 +32,9 @@ python tools/gauge_preview.py --type shiftlight --value rpm=5900 --value speed=1
 
 # G-meter with current motion and older peaks
 python tools/gauge_preview.py --type gmeter --value lateralG=-0.42 --value longitudinalG=0.18 --value peakLat=-0.95 --value peakLong=0.68 -o gmeter.png --scale 3
+
+# Completed 0-100 km/h run in 7.42 seconds
+python tools/gauge_preview.py --type accelTimer --value speed=100 --value timerMs=7420 -o 0-to-100.png --scale 3
 ```
 
 Use `--scale 3` to enlarge each LCD pixel by three. It does not change the
@@ -41,7 +44,7 @@ underlying 240 x 240 render.
 
 | Option | Use |
 | --- | --- |
-| `--type` | Select `standard`, `shiftlight`, or `gmeter`. |
+| `--type` | Select `standard`, `shiftlight`, `gmeter`, or `accelTimer`. |
 | `--value NAME=NUMBER` | Set a simulated sensor value. Repeat as needed. |
 | `--main-source`, `--min`, `--max`, `--unit` | Set standard-gauge inputs. |
 | `--secondary` | Add a standard secondary value: `source,prefix,suffix,y[,dynamic]`. |
@@ -52,6 +55,8 @@ underlying 240 x 240 render.
 
 For a G-meter, `lateralG` and `longitudinalG` set the current dot. `peakLat`
 and `peakLong` simulate signed values from the 30-second peak window.
+For an acceleration-timer preview, `speed` sets the final speed and `timerMs`
+sets the elapsed test time after the simulated launch.
 
 ## Add a new gauge type
 

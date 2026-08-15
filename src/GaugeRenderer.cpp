@@ -427,6 +427,73 @@ void renderShiftLightGauge() {
   LCD_1IN28_Display(BlackImage);
 }
 
+enum AccelerationTimerState {
+  ACCEL_TIMER_ARMED,
+  ACCEL_TIMER_RUNNING,
+  ACCEL_TIMER_COMPLETE,
+};
+
+static AccelerationTimerState gAccelerationTimerState = ACCEL_TIMER_ARMED;
+static uint32_t gAccelerationTimerStartMs = 0;
+static uint32_t gAccelerationTimerElapsedMs = 0;
+
+/**
+ * @brief Render an automatic 0-100 km/h timer from the OBD vehicle-speed PID.
+ *
+ * The timer arms at 1 km/h or below, starts as the vehicle moves above 1 km/h,
+ * and stops at 100 km/h. Stopping the vehicle arms it for the next run.
+ */
+void renderAccelerationTimerGauge() {
+  Paint_Clear(BLACK);
+
+  constexpr float kTimerArmSpeedKph = 1.0f;
+  constexpr float kTimerFinishSpeedKph = 100.0f;
+  const float speedKph = (float)obdValues.vehicle_speed_kmh;
+  const uint32_t now = millis();
+
+  if (speedKph <= kTimerArmSpeedKph) {
+    gAccelerationTimerState = ACCEL_TIMER_ARMED;
+    gAccelerationTimerElapsedMs = 0;
+  } else if (gAccelerationTimerState == ACCEL_TIMER_ARMED) {
+    gAccelerationTimerState = ACCEL_TIMER_RUNNING;
+    gAccelerationTimerStartMs = now;
+  } else if (gAccelerationTimerState == ACCEL_TIMER_RUNNING && speedKph >= kTimerFinishSpeedKph) {
+    gAccelerationTimerElapsedMs = now - gAccelerationTimerStartMs;
+    gAccelerationTimerState = ACCEL_TIMER_COMPLETE;
+  }
+
+  const float speedSweep = 240.0f * clampFloat(speedKph, 0.0f, kTimerFinishSpeedKph) / kTimerFinishSpeedKph;
+  drawClockArc(120, 120, 112, 14, 240.0f, 240.0f, GRAY);
+  if (speedSweep > 0.5f) {
+    drawClockArc(120, 120, 112, 14, 240.0f, speedSweep, GBLUE);
+  }
+
+  char buffer[32];
+  drawCenteredTextFixed(38, "0-100", &Font_nokia_12, WHITE, BLACK);
+  snprintf(buffer, sizeof(buffer), "%u", (unsigned int)obdValues.vehicle_speed_kmh);
+  drawCenteredTextScaledByInk(56, buffer, &Font_nokia_20, 2, GBLUE, BLACK);
+  drawCenteredTextFixed(98, "km/h", &Font_nokia_8, GRAY, BLACK);
+
+  uint32_t elapsedMs = gAccelerationTimerElapsedMs;
+  if (gAccelerationTimerState == ACCEL_TIMER_RUNNING) {
+    elapsedMs = now - gAccelerationTimerStartMs;
+  }
+  if (gAccelerationTimerState == ACCEL_TIMER_ARMED) {
+    snprintf(buffer, sizeof(buffer), "--.--s");
+  } else {
+    snprintf(buffer, sizeof(buffer), "%.2fs", (double)elapsedMs / 1000.0);
+  }
+  drawCenteredTextFixed(128, buffer, &Font_nokia_20, WHITE, BLACK);
+  drawCenteredTextFixed(150, "TIME", &Font_nokia_8, GRAY, BLACK);
+
+  const char* stateText = gAccelerationTimerState == ACCEL_TIMER_ARMED ? "ARMED" :
+                          gAccelerationTimerState == ACCEL_TIMER_RUNNING ? "TIMING" : "COMPLETE";
+  drawCenteredTextFixed(176, stateText, &Font_nokia_12,
+                        gAccelerationTimerState == ACCEL_TIMER_COMPLETE ? GBLUE : GRAY, BLACK);
+  drawStatusIfNeeded(208, GRAY);
+  LCD_1IN28_Display(BlackImage);
+}
+
 void renderGmeterGauge() {
   Paint_Clear(BLACK);
 
@@ -605,21 +672,25 @@ void renderGenericGauge(const GaugeConfig& config) {
  */
 void renderDisplay() {
   size_t idx = getCurrentGaugeProfileIndex();
-  if (idx < activeGaugeCount) {
-    const GaugeConfig& config = activeGauges[idx];
-    if (config.type == GAUGE_TYPE_STANDARD) {
-        renderGenericGauge(config);
-        return;
-    }
+  if (idx >= activeGaugeCount) {
+    Paint_Clear(BLACK);
+    LCD_1IN28_Display(BlackImage);
+    return;
   }
 
-  // Fallbacks for custom gauges
-  switch (idx) {
-    case 4:
+  const GaugeConfig& config = activeGauges[idx];
+  switch (config.type) {
+    case GAUGE_TYPE_STANDARD:
+      renderGenericGauge(config);
+      return;
+    case GAUGE_TYPE_SHIFTLIGHT:
       renderShiftLightGauge();
       return;
-    case 5:
+    case GAUGE_TYPE_GMETER:
       renderGmeterGauge();
+      return;
+    case GAUGE_TYPE_ACCEL_TIMER:
+      renderAccelerationTimerGauge();
       return;
     default:
       Paint_Clear(BLACK);

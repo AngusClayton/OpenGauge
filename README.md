@@ -17,6 +17,7 @@ gauge layouts to their own vehicle.
 - OBD-II polling over the ESP32 TWAI CAN controller.
 - Standard gauges for boost, airflow, AFR, and ignition timing.
 - A shift-light screen with gear, RPM, and speed.
+- An automatic 0-100 km/h timer that uses OBD speed.
 - A G-meter with a five-second dot trail and signed 30-second peak readings.
 - Analogue sensor inputs with linear calibration.
 - Swipe navigation on the integrated touch display.

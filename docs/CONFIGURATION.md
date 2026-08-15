@@ -49,6 +49,7 @@ before you connect a sensor.
 | `standard` | Main value, unit, and up to three secondary values. |
 | `shiftlight` | Gear, RPM, speed, and the shift arc. |
 | `gmeter` | Live G-force dot, trail, and peak readings. |
+| `accelTimer` | Automatic 0-100 km/h timer that uses the `speed` source. |
 
 Standard-gauge fields:
 
@@ -94,6 +95,26 @@ Example boost profile:
 The current fixed-size configuration supports up to 10 data sources, 10 gauge
 profiles, and 3 secondary values per profile. A standard gauge should use no
 more than three secondary values so each value can stay readable.
+
+## 0-100 timer
+
+The default `accelTimer` profile uses the OBD `speed` source. It arms at
+1 km/h or below. It starts when speed rises above 1 km/h. It stops when speed
+reaches 100 km/h. The result remains on screen until the vehicle stops and the
+timer arms again.
+
+Use a profile like this:
+
+```json
+{
+  "type": "accelTimer",
+  "name": "Gauge 7: 0-100 Timer",
+  "mainSourceId": "speed",
+  "minVal": 0.0,
+  "maxVal": 100.0,
+  "unitLabel": "km/h"
+}
+```
 
 ## Preview a change
 
