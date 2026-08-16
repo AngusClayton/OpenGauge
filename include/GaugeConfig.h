@@ -5,15 +5,20 @@
 enum GaugeType {
     GAUGE_TYPE_STANDARD,
     GAUGE_TYPE_GMETER,
-    GAUGE_TYPE_SHIFTLIGHT
+    GAUGE_TYPE_SHIFTLIGHT,
+    GAUGE_TYPE_ACCEL_TIMER
 };
 
 struct SecondaryMetric {
     char sourceId[16];
     char prefix[16];
     char suffix[8];
-    int posY;
-    bool dynamicColor;
+    bool rangeColors;
+    float lowerThreshold;
+    float upperThreshold;
+    char colorBelow[8];
+    char colorBetween[8];
+    char colorAbove[8];
 };
 
 struct GaugeConfig {
@@ -28,4 +33,5 @@ struct GaugeConfig {
     SecondaryMetric secondaries[3];
     uint8_t secondaryCount;
     bool boostUnits;
+    uint16_t shiftTargets[6];
 };

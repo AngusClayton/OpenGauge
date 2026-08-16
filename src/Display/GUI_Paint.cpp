@@ -113,7 +113,7 @@ parameter:
 ******************************************************************************/
 void Paint_SetPixel(UWORD Xpoint, UWORD Ypoint, UWORD Color)
 {
-    if(Xpoint > Paint.Width || Ypoint > Paint.Height){
+    if(Xpoint >= Paint.Width || Ypoint >= Paint.Height){
         Debug("Exceeding display boundaries\r\n");
         return;
     }      
@@ -157,7 +157,7 @@ void Paint_SetPixel(UWORD Xpoint, UWORD Ypoint, UWORD Color)
         return;
     }
 
-    if(X > Paint.WidthMemory || Y > Paint.HeightMemory){
+    if(X >= Paint.WidthMemory || Y >= Paint.HeightMemory){
         Debug("Exceeding display boundaries\r\n");
         return;
     }
@@ -213,8 +213,8 @@ void Paint_Clear(UWORD Color)
             }
         }
     }else if(Paint.Scale == 65) {
-        for (UWORD Y = 0; Y < Paint.HeightByte; Y++) {
-            for (UWORD X = 0; X < Paint.WidthByte; X++ ) {//8 pixel =  1 byte
+        for (UWORD Y = 0; Y < Paint.HeightMemory; Y++) {
+            for (UWORD X = 0; X < Paint.WidthMemory; X++ ) {
                 UDOUBLE Addr = X*2 + Y*Paint.WidthByte;
                 Paint.Image[Addr] = 0xff & (Color>>8);
                 Paint.Image[Addr+1] = 0xff & Color;

@@ -23,7 +23,7 @@ static volatile float gLongitudinalOffsetG = 0.0f; // Ambient calibration offset
 static volatile float gLateralOffsetG = 0.0f;      // Ambient calibration offset for lateral G
 static volatile bool gImuReady = false;            // System flag indicating whether QMI8658 initialized successfully
 
-static GForcePeak gGforcePeakBuffer[kGforcePeakBufferSize] = {}; // Ring buffer for trailing G-force peak history
+static GForcePeak gGforcePeakBuffer[kGforcePeakBufferSize] = {}; // Five-second G-force history ring buffer
 static size_t gGforcePeakIndex = 0;                              // Active index in G-force peak ring buffer
 static uint32_t gLastPeakSampleMs = 0;                           // Timestamp tracking the last peak buffer sample
 static constexpr uint32_t kGforcePeakSampleIntervalMs = 100;    // Peak buffer sampling interval (10Hz)

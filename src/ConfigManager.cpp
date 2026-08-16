@@ -2,13 +2,29 @@
 #include <ArduinoJson.h>
 #include <Arduino.h>
 #include "obd/pid_schedule.h"
+#include "GaugeRenderer.h"
+#include "ConfigCodec.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <memory>
+#include <new>
 
 DataSourceConfig activeDataSources[MAX_DATA_SOURCES];
 size_t activeDataSourceCount = 0;
 
 GaugeConfig activeGauges[MAX_GAUGES];
 size_t activeGaugeCount = 0;
+static String gCurrentConfigJson;
+static SemaphoreHandle_t gConfigMutex = nullptr;
+static size_t gCurrentGaugeProfileIndex = 0;
 
+class ConfigGuard {
+ public:
+  ConfigGuard() { lockConfig(); }
+  ~ConfigGuard() { unlockConfig(); }
+};
+
+#if 0  // Historical split-array configuration retained temporarily for reference.
 const char* varsJson = R"====([
   { "id": "waterTemp", "type": "obd", "pid": 5, "formula": 2 },
   { "id": "intakeTemp", "type": "obd", "pid": 15, "formula": 2 },
@@ -30,8 +46,8 @@ const char* gaugesJson = R"====([
     "unitLabel": "Boost (PSI)",
     "boostUnits": true,
     "secondaries": [
-      { "sourceId": "waterTemp", "prefix": "Water: ", "suffix": "C", "posY": 180, "dynamicColor": true },
-      { "sourceId": "intakeTemp", "prefix": "AIT: ", "suffix": "C", "posY": 208, "dynamicColor": false }
+      { "sourceId": "waterTemp", "prefix": "Water: ", "suffix": "C", "rangeColors": true, "lowerThreshold": 80.0, "upperThreshold": 105.0, "colorBelow": "blue", "colorBetween": "cyan", "colorAbove": "red" },
+      { "sourceId": "intakeTemp", "prefix": "AIT: ", "suffix": "C", "rangeColors": false }
     ]
   },
   {
@@ -41,7 +57,7 @@ const char* gaugesJson = R"====([
     "minVal": 0.0, "maxVal": 300.0,
     "unitLabel": "HP",
     "secondaries": [
-      { "sourceId": "maf", "prefix": "MAF: ", "suffix": " g/s", "posY": 168, "dynamicColor": false }
+      { "sourceId": "maf", "prefix": "MAF: ", "suffix": " g/s", "rangeColors": false }
     ]
   },
   {
@@ -51,7 +67,7 @@ const char* gaugesJson = R"====([
     "minVal": 10.0, "maxVal": 20.0,
     "unitLabel": "AFR",
     "secondaries": [
-      { "sourceId": "lambda", "prefix": "Lambda: ", "suffix": "", "posY": 144, "dynamicColor": false }
+      { "sourceId": "lambda", "prefix": "Lambda: ", "suffix": "", "rangeColors": false }
     ]
   },
   {
@@ -61,12 +77,13 @@ const char* gaugesJson = R"====([
     "minVal": -10.0, "maxVal": 40.0,
     "unitLabel": "IGN DEG",
     "secondaries": [
-      { "sourceId": "rpm", "prefix": "RPM: ", "suffix": "", "posY": 144, "dynamicColor": false }
+      { "sourceId": "rpm", "prefix": "RPM: ", "suffix": "", "rangeColors": false }
     ]
   },
   {
     "type": "shiftlight",
     "name": "Gauge 5: Shift Lights",
+    "shiftTargets": [6500, 6300, 6100, 6000, 5800, 0],
     "secondaries": [
       { "sourceId": "rpm" },
       { "sourceId": "speed" }
@@ -79,6 +96,13 @@ const char* gaugesJson = R"====([
       { "sourceId": "rpm" },
       { "sourceId": "speed" }
     ]
+  },
+  {
+    "type": "accelTimer",
+    "name": "Gauge 7: 0-100 Timer",
+    "mainSourceId": "speed",
+    "minVal": 0.0, "maxVal": 100.0,
+    "unitLabel": "km/h"
   }
 ])====";
 
@@ -90,7 +114,7 @@ const char* gaugesJson = R"====([
  * efficient C-structs in RAM. Once populated, these structs are referenced in 
  * real-time during the display loop, removing the need for runtime JSON parsing.
  */
-void loadConfigFromJson() {
+static void loadEmbeddedLegacyConfig() {
   // Parse Variables
   JsonDocument docVars;
   DeserializationError err1 = deserializeJson(docVars, varsJson);
@@ -140,6 +164,7 @@ void loadConfigFromJson() {
     if (strcmp(typeStr, "standard") == 0) gc.type = GAUGE_TYPE_STANDARD;
     else if (strcmp(typeStr, "gmeter") == 0) gc.type = GAUGE_TYPE_GMETER;
     else if (strcmp(typeStr, "shiftlight") == 0) gc.type = GAUGE_TYPE_SHIFTLIGHT;
+    else if (strcmp(typeStr, "accelTimer") == 0) gc.type = GAUGE_TYPE_ACCEL_TIMER;
     
     strlcpy(gc.name, g["name"] | "", sizeof(gc.name));
     strlcpy(gc.mainSourceId, g["mainSourceId"] | "", sizeof(gc.mainSourceId));
@@ -148,6 +173,13 @@ void loadConfigFromJson() {
     gc.maxVal = g["maxVal"] | 100.0f;
     strlcpy(gc.unitLabel, g["unitLabel"] | "", sizeof(gc.unitLabel));
     gc.boostUnits = g["boostUnits"] | false;
+
+    if (gc.type == GAUGE_TYPE_SHIFTLIGHT) {
+      JsonArray targets = g["shiftTargets"];
+      for (uint8_t gear = 1; gear <= 6 && gear <= targets.size(); gear++) {
+        setShiftTargetRpm(gear, targets[gear - 1] | 0);
+      }
+    }
     
     gc.secondaryCount = 0;
     JsonArray secs = g["secondaries"];
@@ -157,8 +189,12 @@ void loadConfigFromJson() {
       strlcpy(sm.sourceId, s["sourceId"] | "", sizeof(sm.sourceId));
       strlcpy(sm.prefix, s["prefix"] | "", sizeof(sm.prefix));
       strlcpy(sm.suffix, s["suffix"] | "", sizeof(sm.suffix));
-      sm.posY = s["posY"] | 0;
-      sm.dynamicColor = s["dynamicColor"] | false;
+      sm.rangeColors = s["rangeColors"] | false;
+      sm.lowerThreshold = s["lowerThreshold"] | 0.0f;
+      sm.upperThreshold = s["upperThreshold"] | 100.0f;
+      strlcpy(sm.colorBelow, s["colorBelow"] | "blue", sizeof(sm.colorBelow));
+      strlcpy(sm.colorBetween, s["colorBetween"] | "cyan", sizeof(sm.colorBetween));
+      strlcpy(sm.colorAbove, s["colorAbove"] | "red", sizeof(sm.colorAbove));
       gc.secondaryCount++;
     }
     
@@ -169,6 +205,51 @@ void loadConfigFromJson() {
   
   if (activeGaugeCount > 0) {
       applyGaugeProfile(0);
+  }
+}
+#endif
+
+void lockConfig() {
+  if (!gConfigMutex) gConfigMutex = xSemaphoreCreateRecursiveMutex();
+  if (gConfigMutex) xSemaphoreTakeRecursive(gConfigMutex, portMAX_DELAY);
+}
+
+void unlockConfig() {
+  if (gConfigMutex) xSemaphoreGiveRecursive(gConfigMutex);
+}
+
+bool applyParsedOpenGaugeConfig(const ParsedOpenGaugeConfig& parsed,
+                                const char* json, size_t length) {
+  lockConfig();
+  memcpy(activeDataSources, parsed.dataSources, sizeof(activeDataSources));
+  activeDataSourceCount = parsed.dataSourceCount;
+  memcpy(activeGauges, parsed.gauges, sizeof(activeGauges));
+  activeGaugeCount = parsed.gaugeCount;
+  resetAccelerationTimer();
+  gCurrentConfigJson = String(json).substring(0, length);
+  if (activeGaugeCount) applyGaugeProfile(gCurrentGaugeProfileIndex < activeGaugeCount ? gCurrentGaugeProfileIndex : 0);
+  unlockConfig();
+  return true;
+}
+
+bool applyConfigJson(const char* json, size_t length, char* error, size_t errorSize) {
+  std::unique_ptr<ParsedOpenGaugeConfig> parsed(new (std::nothrow) ParsedOpenGaugeConfig{});
+  if (!parsed) {
+    if (error && errorSize) snprintf(error, errorSize, "Not enough memory to parse configuration.");
+    return false;
+  }
+  if (!parseOpenGaugeConfig(json, length, *parsed, error, errorSize)) return false;
+  return applyParsedOpenGaugeConfig(*parsed, json, length);
+}
+
+const char* getCurrentConfigJson() { return gCurrentConfigJson.c_str(); }
+size_t getCurrentConfigJsonLength() { return gCurrentConfigJson.length(); }
+
+void loadConfigFromJson() {
+  const char* defaults = getDefaultOpenGaugeConfigJson();
+  char error[160];
+  if (!applyConfigJson(defaults, strlen(defaults), error, sizeof(error))) {
+    Serial.printf("[CONFIG] Default configuration failed: %s\n", error);
   }
 }
 
@@ -186,6 +267,7 @@ void loadConfigFromJson() {
  * @return float Calibrated value of the requested metric.
  */
 float getValueForSource(const char* sourceId) {
+    ConfigGuard guard;
     for (size_t i = 0; i < activeDataSourceCount; i++) {
         if (strcmp(activeDataSources[i].id, sourceId) == 0) {
             const DataSourceConfig& ds = activeDataSources[i];
@@ -230,6 +312,7 @@ float getValueForSource(const char* sourceId) {
 }
 
 void updateAnalogSources() {
+    ConfigGuard guard;
     for (size_t i = 0; i < activeDataSourceCount; i++) {
         if (activeDataSources[i].type == SOURCE_ANALOG) {
             int raw = analogRead(activeDataSources[i].pin);
@@ -243,15 +326,20 @@ void updateAnalogSources() {
     }
 }
 
-static size_t gCurrentGaugeProfileIndex = 0;
-
 /**
  * @brief Gets the zero-based index of the currently active gauge profile.
  * 
  * @return size_t Current active gauge index.
  */
 size_t getCurrentGaugeProfileIndex() {
-    return gCurrentGaugeProfileIndex;
+  ConfigGuard guard;
+  return gCurrentGaugeProfileIndex;
+}
+
+bool isAccelerationTimerProfileActive() {
+  ConfigGuard guard;
+  return gCurrentGaugeProfileIndex < activeGaugeCount &&
+         activeGauges[gCurrentGaugeProfileIndex].type == GAUGE_TYPE_ACCEL_TIMER;
 }
 
 /**
@@ -266,12 +354,16 @@ size_t getCurrentGaugeProfileIndex() {
  * @param index Zero-based profile index to switch to.
  */
 void applyGaugeProfile(size_t index) {
+  ConfigGuard guard;
   if (index >= activeGaugeCount) {
     return;
   }
   
   gCurrentGaugeProfileIndex = index;
   const GaugeConfig& gc = activeGauges[index];
+  if (gc.type == GAUGE_TYPE_SHIFTLIGHT) {
+    for (uint8_t gear = 1; gear <= 6; ++gear) setShiftTargetRpm(gear, gc.shiftTargets[gear - 1]);
+  }
   
   uint8_t pids[MAX_DATA_SOURCES];
   size_t pidCount = 0;
@@ -329,6 +421,7 @@ void applyGaugeProfile(size_t index) {
  * @brief Cycle to the next sequential gauge profile.
  */
 void nextGaugeProfile() {
+  ConfigGuard guard;
   if (activeGaugeCount == 0) return;
   const size_t next = (gCurrentGaugeProfileIndex + 1) % activeGaugeCount;
   applyGaugeProfile(next);
@@ -338,6 +431,7 @@ void nextGaugeProfile() {
  * @brief Cycle to the previous sequential gauge profile.
  */
 void prevGaugeProfile() {
+  ConfigGuard guard;
   if (activeGaugeCount == 0) return;
   const size_t prev = (gCurrentGaugeProfileIndex + activeGaugeCount - 1) % activeGaugeCount;
   applyGaugeProfile(prev);

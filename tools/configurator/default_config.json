@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "dataSources": [
+    { "id": "waterTemp", "type": "obd", "pid": 5, "formula": 2 },
+    { "id": "intakeTemp", "type": "obd", "pid": 15, "formula": 2 },
+    { "id": "rpm", "type": "obd", "pid": 12, "formula": 3 },
+    { "id": "speed", "type": "obd", "pid": 13, "formula": 0 },
+    { "id": "maf", "type": "obd", "pid": 16, "formula": 4 },
+    { "id": "lambda", "type": "obd", "pid": 52, "formula": 7 },
+    { "id": "afr", "type": "obd", "pid": 52, "formula": 7 },
+    { "id": "ignition", "type": "obd", "pid": 14, "formula": 6 },
+    { "id": "boostPress", "type": "analog", "pin": 18, "multiplier": 30.7692, "offset": -28.2692 }
+  ],
+  "gauges": [
+    { "type": "standard", "name": "Boost", "mainSourceId": "boostPress", "minVal": -10, "maxVal": 25, "unitLabel": "Boost (PSI)", "boostUnits": true, "secondaries": [
+      { "sourceId": "waterTemp", "prefix": "Water: ", "suffix": "C", "rangeColors": true, "lowerThreshold": 80, "upperThreshold": 105, "colorBelow": "blue", "colorBetween": "cyan", "colorAbove": "red" },
+      { "sourceId": "intakeTemp", "prefix": "AIT: ", "suffix": "C", "rangeColors": false }
+    ] },
+    { "type": "standard", "name": "Horsepower", "mainSourceId": "maf", "minVal": 0, "maxVal": 300, "unitLabel": "HP", "secondaries": [
+      { "sourceId": "maf", "prefix": "MAF: ", "suffix": " g/s", "rangeColors": false }
+    ] },
+    { "type": "standard", "name": "AFR", "mainSourceId": "afr", "minVal": 10, "maxVal": 20, "unitLabel": "AFR", "secondaries": [
+      { "sourceId": "lambda", "prefix": "Lambda: ", "suffix": "", "rangeColors": false }
+    ] },
+    { "type": "standard", "name": "Ignition", "mainSourceId": "ignition", "minVal": -10, "maxVal": 40, "unitLabel": "IGN DEG", "secondaries": [
+      { "sourceId": "rpm", "prefix": "RPM: ", "suffix": "", "rangeColors": false }
+    ] },
+    { "type": "shiftlight", "name": "Shift Lights", "shiftTargets": [6500, 6300, 6100, 6000, 5800, 0] },
+    { "type": "gmeter", "name": "G Meter" },
+    { "type": "accelTimer", "name": "0-100 Timer", "mainSourceId": "speed", "minVal": 0, "maxVal": 100, "unitLabel": "km/h" }
+  ]
+}

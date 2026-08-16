@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenGauge Configurator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header><h1><span class="wordmark">OpenGauge</span> <span class="page-title">Configurator</span></h1><p>Configure, preview, and apply gauge screens.</p></header>
+  <main>
+    <section class="toolbar">
+      <button id="save">Save &amp; apply</button><button id="download">Download JSON</button>
+      <label class="upload">Upload JSON<input id="upload" type="file" accept="application/json"></label>
+      <button id="restore">Restore default</button>
+      <button id="stop-portal" hidden>Exit hotspot</button>
+    </section>
+    <p id="message" role="status"></p>
+    <section id="editor-view">
+      <div class="columns">
+        <details class="section-accordion" open>
+          <summary>Data sources <span id="source-count" class="count"></span></summary>
+          <div class="accordion-content"><div id="sources"></div><button id="add-source">Add source</button></div>
+        </details>
+        <details class="section-accordion" open>
+          <summary>Gauge screens <span id="gauge-count" class="count"></span></summary>
+          <div class="accordion-content"><div id="gauges"></div><button id="add-gauge">Add gauge</button></div>
+        </details>
+      </div>
+      <details class="section-accordion raw-json">
+        <summary>Raw JSON</summary>
+        <div class="accordion-content"><textarea id="raw" spellcheck="false"></textarea><button id="apply-raw">Apply JSON</button></div>
+      </details>
+    </section>
+    <section class="preview"><h2>Exact preview</h2><label>Gauge <select id="preview-gauge"></select></label><div id="samples"></div><button id="render">Render preview</button><p>Rendered by the production C++ code. Grey marks pixels outside the physical round LCD.</p><canvas id="preview-canvas" width="240" height="240" aria-label="Gauge preview"></canvas><img id="preview-image" alt="Gauge preview" hidden></section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

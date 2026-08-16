@@ -12,9 +12,6 @@
 
 extern UWORD *BlackImage;
 
-static constexpr UWORD kColdWaterColor = BLUE;
-static constexpr UWORD kNormalWaterColor = GBLUE;
-static constexpr UWORD kHotWaterColor = RED;
 static constexpr UWORD kShiftTrackColor = GRAY;
 static constexpr UWORD kShiftOrangeColor = 0xFD20;
 
@@ -23,13 +20,19 @@ static uint32_t gStatusIssueSinceMs = 0;
 static int gLastDetectedGear = 0;
 static uint32_t gLastDetectedGearMs = 0;
 
+class ScopedConfigLock {
+ public:
+  ScopedConfigLock() { lockConfig(); }
+  ~ScopedConfigLock() { unlockConfig(); }
+};
+
 struct ShiftGearConfig {
   uint8_t gearNumber;
   float rpmPerKph;
   uint16_t targetShiftRpm;
 };
 
-static const ShiftGearConfig kShiftGearTable[] = {
+static ShiftGearConfig kShiftGearTable[] = {
   {1, 115.4f, 6500},
   {2, 73.2f, 6300},
   {3, 49.2f, 6100},
@@ -37,6 +40,16 @@ static const ShiftGearConfig kShiftGearTable[] = {
   {5, 28.6f, 5800},
   {6, 24.0f, 0},
 };
+
+void setShiftTargetRpm(uint8_t gear, uint16_t targetRpm) {
+  const size_t gearCount = sizeof(kShiftGearTable) / sizeof(kShiftGearTable[0]);
+  for (size_t i = 0; i < gearCount; i++) {
+    if (kShiftGearTable[i].gearNumber == gear) {
+      kShiftGearTable[i].targetShiftRpm = targetRpm;
+      return;
+    }
+  }
+}
 
 /**
  * @brief Manages the display delay timer when an OBD connection issue arises.
@@ -75,21 +88,24 @@ float clampFloat(float value, float minValue, float maxValue) {
 }
 
 /**
- * @brief Determines the dynamic text color depending on engine coolant temperature.
- * 
- * Cold: Blue. Normal: Teal/GBlue. Overheating (>105C): Red flash.
- * 
- * @param waterTempC Temperature value in Celsius.
- * @return UWORD 16-bit color code for the LCD library.
+ * @brief Resolve a configured colour name to the display's RGB565 value.
  */
-UWORD waterTempColor(float waterTempC) {
-  if (waterTempC < 80.0f) {
-    return kColdWaterColor;
-  }
-  if (waterTempC > 105.0f) {
-    return kHotWaterColor;
-  }
-  return kNormalWaterColor;
+UWORD configuredColor(const char* name) {
+  if (strcmp(name, "white") == 0) return WHITE;
+  if (strcmp(name, "gray") == 0) return GRAY;
+  if (strcmp(name, "blue") == 0) return BLUE;
+  if (strcmp(name, "cyan") == 0) return GBLUE;
+  if (strcmp(name, "green") == 0) return GREEN;
+  if (strcmp(name, "yellow") == 0) return YELLOW;
+  if (strcmp(name, "orange") == 0) return kShiftOrangeColor;
+  if (strcmp(name, "red") == 0) return RED;
+  return GBLUE;
+}
+
+UWORD rangeColor(float value, const SecondaryMetric& metric) {
+  if (value < metric.lowerThreshold) return configuredColor(metric.colorBelow);
+  if (value > metric.upperThreshold) return configuredColor(metric.colorAbove);
+  return configuredColor(metric.colorBetween);
 }
 
 /**
@@ -168,6 +184,98 @@ void drawCenteredTextFixed(UWORD y, const char* text, sFONT* font, UWORD fg, UWO
     x = 0;
   }
   drawTextFixed((UWORD)x, y, text, font, fg, bg);
+}
+
+/**
+ * @brief Draw a bundled bitmap font at an integer scale without antialiasing.
+ *
+ * This keeps the LCD's deliberately crisp pixel style while allowing important
+ * values to be much larger than the biggest bundled font.
+ */
+void drawCenteredTextScaled(UWORD y, const char* text, sFONT* font, uint8_t scale, UWORD fg, UWORD bg) {
+  if (text == NULL || font == NULL || scale == 0) {
+    return;
+  }
+
+  const int width = (int)strlen(text) * (int)font->Width * (int)scale;
+  int startX = (240 - width) / 2;
+  if (startX < 0) {
+    startX = 0;
+  }
+
+  int charX = startX;
+  const uint16_t rowBytes = font->Width / 8 + (font->Width % 8 ? 1 : 0);
+  while (*text != '\0') {
+    const uint32_t charOffset = (*text - ' ') * font->Height * rowBytes;
+    const unsigned char* glyph = &font->table[charOffset];
+    for (uint16_t row = 0; row < font->Height; row++) {
+      for (uint16_t col = 0; col < font->Width; col++) {
+        const bool set = glyph[(row * rowBytes) + (col / 8)] & (0x80 >> (col % 8));
+        const UWORD color = set ? fg : bg;
+        for (uint8_t sy = 0; sy < scale; sy++) {
+          for (uint8_t sx = 0; sx < scale; sx++) {
+            Paint_SetPixel((UWORD)(charX + col * scale + sx),
+                           (UWORD)(y + row * scale + sy), color);
+          }
+        }
+      }
+    }
+    charX += font->Width * scale;
+    text++;
+  }
+}
+
+/**
+ * @brief Centre a scaled bitmap string by its lit pixels, not its fixed font cell.
+ *
+ * Large single glyphs (notably the shift gear) can have substantial blank space
+ * within their font cell, which makes ordinary fixed-cell centring look offset.
+ */
+void drawCenteredTextScaledByInk(UWORD y, const char* text, sFONT* font, uint8_t scale, UWORD fg, UWORD bg) {
+  if (text == NULL || font == NULL || scale == 0) {
+    return;
+  }
+
+  const uint16_t rowBytes = font->Width / 8 + (font->Width % 8 ? 1 : 0);
+  int minInkX = 32767;
+  int maxInkX = -1;
+  for (size_t character = 0; text[character] != '\0'; character++) {
+    const uint32_t charOffset = (text[character] - ' ') * font->Height * rowBytes;
+    const unsigned char* glyph = &font->table[charOffset];
+    for (uint16_t row = 0; row < font->Height; row++) {
+      for (uint16_t col = 0; col < font->Width; col++) {
+        if (glyph[(row * rowBytes) + (col / 8)] & (0x80 >> (col % 8))) {
+          const int inkX = (int)(character * font->Width) + col;
+          if (inkX < minInkX) minInkX = inkX;
+          if (inkX > maxInkX) maxInkX = inkX;
+        }
+      }
+    }
+  }
+
+  if (maxInkX < minInkX) {
+    return;
+  }
+
+  const int startX = (240 - (maxInkX - minInkX + 1) * scale) / 2 - minInkX * scale;
+  int charX = startX;
+  while (*text != '\0') {
+    const uint32_t charOffset = (*text - ' ') * font->Height * rowBytes;
+    const unsigned char* glyph = &font->table[charOffset];
+    for (uint16_t row = 0; row < font->Height; row++) {
+      for (uint16_t col = 0; col < font->Width; col++) {
+        const UWORD color = (glyph[(row * rowBytes) + (col / 8)] & (0x80 >> (col % 8))) ? fg : bg;
+        for (uint8_t sy = 0; sy < scale; sy++) {
+          for (uint8_t sx = 0; sx < scale; sx++) {
+            Paint_SetPixel((UWORD)(charX + col * scale + sx),
+                           (UWORD)(y + row * scale + sy), color);
+          }
+        }
+      }
+    }
+    charX += font->Width * scale;
+    text++;
+  }
 }
 
 /**
@@ -321,29 +429,114 @@ void renderShiftLightGauge() {
   } else {
     snprintf(buffer, sizeof(buffer), "-");
   }
-  drawCenteredTextFixed(72, buffer, &Font_nokia_20, WHITE, BLACK);
-  drawCenteredTextFixed(102, "GEAR", &Font_nokia_8, GRAY, BLACK);
+  drawCenteredTextScaledByInk(38, buffer, &Font_nokia_24, 3, WHITE, BLACK);
+  drawCenteredTextFixed(112, "GEAR", &Font_nokia_12, GRAY, BLACK);
 
-  snprintf(buffer, sizeof(buffer), "RPM: %u", (unsigned int)obdValues.rpm);
-  drawCenteredTextFixed(136, buffer, &Font_nokia_12, arcColor, BLACK);
+  snprintf(buffer, sizeof(buffer), "%u", (unsigned int)obdValues.rpm);
+  drawCenteredTextFixed(132, buffer, &Font_nokia_20, arcColor, BLACK);
+  drawCenteredTextFixed(153, "RPM", &Font_nokia_8, GRAY, BLACK);
 
-  snprintf(buffer, sizeof(buffer), "SPD: %u", (unsigned int)obdValues.vehicle_speed_kmh);
-  drawCenteredTextFixed(156, buffer, &Font_nokia_12, GBLUE, BLACK);
-  drawCenteredTextFixed(170, "km/h", &Font_nokia_8, GRAY, BLACK);
+  snprintf(buffer, sizeof(buffer), "%u", (unsigned int)obdValues.vehicle_speed_kmh);
+  drawCenteredTextFixed(170, buffer, &Font_nokia_20, GBLUE, BLACK);
+  drawCenteredTextFixed(192, "km/h", &Font_nokia_8, GRAY, BLACK);
 
-  if (gear > 0 && targetShiftRpm > 0) {
-    snprintf(buffer, sizeof(buffer), "Shift @ %u", (unsigned int)targetShiftRpm);
-    drawCenteredTextFixed(184, buffer, &Font_nokia_8, arcColor, BLACK);
-  } else if (gear == 6) {
-    drawCenteredTextFixed(184, "Top Gear", &Font_nokia_8, GRAY, BLACK);
-  } else if (gear == 0) {
-    drawCenteredTextFixed(184, "Neutral / Clutch", &Font_nokia_8, GRAY, BLACK);
-  } else {
-    drawCenteredTextFixed(184, "Gear Detecting", &Font_nokia_8, GRAY, BLACK);
+  LCD_1IN28_Display(BlackImage);
+}
+
+enum AccelerationTimerState {
+  ACCEL_TIMER_ARMED,
+  ACCEL_TIMER_RUNNING,
+  ACCEL_TIMER_COMPLETE,
+};
+
+static volatile AccelerationTimerState gAccelerationTimerState = ACCEL_TIMER_ARMED;
+static volatile uint32_t gAccelerationTimerStartMs = 0;
+static volatile uint32_t gAccelerationTimerElapsedMs = 0;
+
+void resetAccelerationTimer() {
+  gAccelerationTimerState = ACCEL_TIMER_ARMED;
+  gAccelerationTimerStartMs = 0;
+  gAccelerationTimerElapsedMs = 0;
+}
+
+/**
+ * @brief Advance the 0-100 timer state from the high-frequency OBD task.
+ */
+void updateAccelerationTimer() {
+  ScopedConfigLock guard;
+  const size_t profileIndex = getCurrentGaugeProfileIndex();
+  if (profileIndex >= activeGaugeCount || activeGauges[profileIndex].type != GAUGE_TYPE_ACCEL_TIMER) {
+    return;
+  }
+  const GaugeConfig& config = activeGauges[profileIndex];
+  const float startSpeed = config.minVal;
+  const float finishSpeed = config.maxVal;
+  const float speed = getValueForSource(config.mainSourceId);
+  const uint32_t now = millis();
+
+  if (speed <= startSpeed) {
+    gAccelerationTimerState = ACCEL_TIMER_ARMED;
+    gAccelerationTimerElapsedMs = 0;
+  } else if (gAccelerationTimerState == ACCEL_TIMER_ARMED) {
+    gAccelerationTimerState = ACCEL_TIMER_RUNNING;
+    gAccelerationTimerStartMs = now;
+  } else if (gAccelerationTimerState == ACCEL_TIMER_RUNNING && speed >= finishSpeed) {
+    gAccelerationTimerElapsedMs = now - gAccelerationTimerStartMs;
+    gAccelerationTimerState = ACCEL_TIMER_COMPLETE;
+  }
+}
+
+/**
+ * @brief Render an automatic 0-100 km/h timer from the OBD vehicle-speed PID.
+ *
+ * The timer arms at 1 km/h or below, starts as the vehicle moves above 1 km/h,
+ * and stops at 100 km/h. Stopping the vehicle arms it for the next run.
+ */
+void renderAccelerationTimerGauge() {
+  Paint_Clear(BLACK);
+
+  const size_t profileIndex = getCurrentGaugeProfileIndex();
+  if (profileIndex >= activeGaugeCount) {
+    return;
+  }
+  const GaugeConfig& config = activeGauges[profileIndex];
+  const float speed = getValueForSource(config.mainSourceId);
+  const float speedRange = config.maxVal - config.minVal;
+  const uint32_t now = millis();
+  // Keep direct renderer calls, including native previews, self-contained.
+  // During normal use the OBD task updates this state at a higher cadence.
+  updateAccelerationTimer();
+
+  const float speedSweep = speedRange > 0.0f ? 240.0f * (clampFloat(speed, config.minVal, config.maxVal) - config.minVal) / speedRange : 0.0f;
+  drawClockArc(120, 120, 112, 14, 240.0f, 240.0f, GRAY);
+  if (speedSweep > 0.5f) {
+    drawClockArc(120, 120, 112, 14, 240.0f, speedSweep, GBLUE);
   }
 
-  drawStatusIfNeeded(206, GRAY);
+  char buffer[32];
+  snprintf(buffer, sizeof(buffer), "%.0f-%.0f", (double)config.minVal, (double)config.maxVal);
+  drawCenteredTextFixed(38, buffer, &Font_nokia_12, WHITE, BLACK);
+  snprintf(buffer, sizeof(buffer), "%.0f", (double)speed);
+  drawCenteredTextScaledByInk(56, buffer, &Font_nokia_20, 2, GBLUE, BLACK);
+  drawCenteredTextFixed(98, config.unitLabel, &Font_nokia_8, GRAY, BLACK);
 
+  uint32_t elapsedMs = gAccelerationTimerElapsedMs;
+  if (gAccelerationTimerState == ACCEL_TIMER_RUNNING) {
+    elapsedMs = now - gAccelerationTimerStartMs;
+  }
+  if (gAccelerationTimerState == ACCEL_TIMER_ARMED) {
+    snprintf(buffer, sizeof(buffer), "--.--s");
+  } else {
+    snprintf(buffer, sizeof(buffer), "%.2fs", (double)elapsedMs / 1000.0);
+  }
+  drawCenteredTextFixed(128, buffer, &Font_nokia_20, WHITE, BLACK);
+  drawCenteredTextFixed(150, "TIME", &Font_nokia_8, GRAY, BLACK);
+
+  const char* stateText = gAccelerationTimerState == ACCEL_TIMER_ARMED ? "ARMED" :
+                          gAccelerationTimerState == ACCEL_TIMER_RUNNING ? "TIMING" : "COMPLETE";
+  drawCenteredTextFixed(176, stateText, &Font_nokia_12,
+                        gAccelerationTimerState == ACCEL_TIMER_COMPLETE ? GBLUE : GRAY, BLACK);
+  drawStatusIfNeeded(208, GRAY);
   LCD_1IN28_Display(BlackImage);
 }
 
@@ -355,32 +548,44 @@ void renderGmeterGauge() {
   const int radius = 72;
   const int dotRadius = 7;
   const int maxDotTravel = radius - dotRadius - 2;
+  static constexpr UWORD kGmeterGridColor = 0x4208;
+  constexpr float kGmeterDisplayRange = 1.5f;
+  constexpr uint32_t kGforceTrailWindowMs = 5000;
 
-  Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)radius, GRAY, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
-  Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)(radius / 2), GRAY, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
-  Paint_DrawLine((UWORD)(cx - radius), (UWORD)cy, (UWORD)(cx + radius), (UWORD)cy, GRAY, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
-  Paint_DrawLine((UWORD)cx, (UWORD)(cy - radius), (UWORD)cx, (UWORD)(cy + radius), GRAY, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
-  Paint_DrawCircle((UWORD)cx, (UWORD)cy, 2, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-
-  Paint_DrawString_EN(cx + 51, cy - 57, "1.5g", &Font_nokia_8, BLACK, GRAY);
-  Paint_DrawString_EN(cx + 25, cy - 31, "0.75g", &Font_nokia_8, BLACK, GRAY);
+  Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)radius, kGmeterGridColor, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
+  Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)(radius / 2), kGmeterGridColor, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
+  Paint_DrawLine((UWORD)(cx - radius), (UWORD)cy, (UWORD)(cx + radius), (UWORD)cy, kGmeterGridColor, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
+  Paint_DrawLine((UWORD)cx, (UWORD)(cy - radius), (UWORD)cx, (UWORD)(cy + radius), kGmeterGridColor, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
+  Paint_DrawCircle((UWORD)cx, (UWORD)cy, 2, kGmeterGridColor, DOT_PIXEL_1X1, DRAW_FILL_FULL);
+  drawTextFixed(cx + 51, cy - 57, "1.5g", &Font_nokia_8, GRAY, BLACK);
+  drawTextFixed(cx + 25, cy - 31, "0.75g", &Font_nokia_8, GRAY, BLACK);
 
   if (!isImuReady()) {
-    drawCenteredTextFixed(100, "IMU OFFLINE", &Font_nokia_12, RED, BLACK);
-    drawCenteredTextFixed(184, "Check QMI8658 wiring", &Font_nokia_8, GRAY, BLACK);
+    drawCenteredTextFixed(92, "IMU OFFLINE", &Font_nokia_12, RED, BLACK);
+    drawCenteredTextFixed(174, "Check QMI8658 wiring", &Font_nokia_8, GRAY, BLACK);
     LCD_1IN28_Display(BlackImage);
     return;
   }
 
+  drawStatusIfNeeded(16, GRAY);
+
   const uint32_t now = millis();
   const GForcePeak* gGforcePeakBuffer = getGforcePeakBuffer();
-  float kGmeterDisplayRange = 1.5f;
-  uint32_t kGforceTrailWindowMs = 5000;
+  float peakLateral = 0.0f;
+  float peakLongitudinal = 0.0f;
   for (size_t i = 0; i < kGforcePeakBufferSize; i++) {
     const GForcePeak& peak = gGforcePeakBuffer[i];
     if (peak.timestampMs == 0 || (now - peak.timestampMs) > kGforceTrailWindowMs) {
       continue;
     }
+
+    if (fabsf(peak.lateralG) > fabsf(peakLateral)) {
+      peakLateral = peak.lateralG;
+    }
+    if (fabsf(peak.longitudinalG) > fabsf(peakLongitudinal)) {
+      peakLongitudinal = peak.longitudinalG;
+    }
+
     const float lateral = clampFloat(peak.lateralG, -kGmeterDisplayRange, kGmeterDisplayRange);
     const float longitudinal = clampFloat(peak.longitudinalG, -kGmeterDisplayRange, kGmeterDisplayRange);
     const int trailX = cx + (int)((lateral / kGmeterDisplayRange) * (float)maxDotTravel);
@@ -396,16 +601,17 @@ void renderGmeterGauge() {
   Paint_DrawCircle((UWORD)dotX, (UWORD)dotY, (UWORD)dotRadius, RED, DOT_PIXEL_1X1, DRAW_FILL_FULL);
 
   char buffer[64];
-  snprintf(buffer, sizeof(buffer), "Lat: %+0.2fg", (double)getLateralG());
-  drawCenteredTextFixed(198, buffer, &Font_nokia_8, GBLUE, BLACK);
+  drawCenteredTextFixed(156, "PEAK", &Font_nokia_8, GRAY, BLACK);
+  drawTextFixed(54, 170, "LAT", &Font_nokia_8, GRAY, BLACK);
+  drawTextFixed(156, 170, "LONG", &Font_nokia_8, GRAY, BLACK);
 
-  snprintf(buffer, sizeof(buffer), "Long: %+0.2fg", (double)getLongitudinalG());
-  drawCenteredTextFixed(212, buffer, &Font_nokia_8, WHITE, BLACK);
+  snprintf(buffer, sizeof(buffer), "%+.2f", (double)peakLateral);
+  const int lateralWidth = textWidthPx(buffer, &Font_nokia_16);
+  drawTextFixed((UWORD)(70 - lateralWidth / 2), 182, buffer, &Font_nokia_16, GBLUE, BLACK);
 
-  snprintf(buffer, sizeof(buffer), "Forward ^");
-  drawCenteredTextFixed(226, buffer, &Font_nokia_8, GRAY, BLACK);
-
-  drawStatusIfNeeded(16, GRAY);
+  snprintf(buffer, sizeof(buffer), "%+.2f", (double)peakLongitudinal);
+  const int longitudinalWidth = textWidthPx(buffer, &Font_nokia_16);
+  drawTextFixed((UWORD)(170 - longitudinalWidth / 2), 182, buffer, &Font_nokia_16, WHITE, BLACK);
 
   LCD_1IN28_Display(BlackImage);
 }
@@ -446,36 +652,55 @@ void renderGenericGauge(const GaugeConfig& config) {
   } else {
       snprintf(buffer, sizeof(buffer), "%.1f", (double)mainVal);
   }
-  drawCenteredTextFixed(80, buffer, &Font_nokia_20, WHITE, BLACK);
+  // Four-character readings (e.g. 12.4) use a crisp 2x bitmap font. Scaling
+  // the 16px face gives the value emphasis without touching the dial arc.
+  // Fall back to the largest native font for longer negative values.
+  if (strlen(buffer) <= 4) {
+      drawCenteredTextScaled(58, buffer, &Font_nokia_16, 2, WHITE, BLACK);
+  } else {
+      drawCenteredTextFixed(62, buffer, &Font_nokia_24, WHITE, BLACK);
+  }
   
   // Custom case: dynamically adjust unit labels if handling vacuum/boost scales
   if (config.boostUnits) {
       if (mainVal < 0.0f) {
-          drawCenteredTextFixed(108, "Boost (inHg)", &Font_nokia_8, WHITE, BLACK);
+          drawCenteredTextFixed(94, "Boost (inHg)", &Font_nokia_12, WHITE, BLACK);
       } else {
-          drawCenteredTextFixed(108, "Boost (PSI)", &Font_nokia_8, WHITE, BLACK);
+          drawCenteredTextFixed(94, "Boost (PSI)", &Font_nokia_12, WHITE, BLACK);
       }
   } else {
-      drawCenteredTextFixed(108, config.unitLabel, &Font_nokia_8, WHITE, BLACK);
+      drawCenteredTextFixed(94, config.unitLabel, &Font_nokia_12, WHITE, BLACK);
   }
 
-  // Draw any active secondary readouts below the primary dial values
+  // Draw secondary metrics as vertically stacked value/label pairs. Keeping
+  // labels separate lets the useful number remain large without a long line
+  // of text running outside the circular display.
   for (uint8_t i = 0; i < config.secondaryCount; i++) {
       const SecondaryMetric& sec = config.secondaries[i];
       float secVal = getValueForSource(sec.sourceId);
       
       if (fabsf(secVal) >= 100.0f) {
-          snprintf(buffer, sizeof(buffer), "%s%.0f%s", sec.prefix, (double)secVal, sec.suffix);
+          snprintf(buffer, sizeof(buffer), "%.0f%s", (double)secVal, sec.suffix);
       } else {
-          snprintf(buffer, sizeof(buffer), "%s%.1f%s", sec.prefix, (double)secVal, sec.suffix);
+          snprintf(buffer, sizeof(buffer), "%.1f%s", (double)secVal, sec.suffix);
       }
       
       UWORD color = GBLUE;
-      if (sec.dynamicColor) {
-          color = waterTempColor(secVal);
+      if (sec.rangeColors) {
+          color = rangeColor(secVal, sec);
       }
       
-      drawCenteredTextFixed((UWORD)sec.posY, buffer, &Font_nokia_12, color, BLACK);
+      const UWORD valueY = config.secondaryCount <= 2 ? (UWORD)(120 + i * 54) : (UWORD)(102 + i * 44);
+      const UWORD labelY = config.secondaryCount <= 2 ? (UWORD)(144 + i * 54) : (UWORD)(124 + i * 44);
+      drawCenteredTextFixed(valueY, buffer, &Font_nokia_20, color, BLACK);
+
+      char label[sizeof(sec.prefix)];
+      snprintf(label, sizeof(label), "%s", sec.prefix);
+      size_t labelLength = strlen(label);
+      while (labelLength > 0 && (label[labelLength - 1] == ' ' || label[labelLength - 1] == ':')) {
+          label[--labelLength] = '\0';
+      }
+      drawCenteredTextFixed(labelY, label, &Font_nokia_12, GRAY, BLACK);
   }
 
   drawStatusIfNeeded(160, GRAY);
@@ -488,26 +713,50 @@ void renderGenericGauge(const GaugeConfig& config) {
  * Translates the active JSON profile type to its respective drawing layout.
  */
 void renderDisplay() {
+  ScopedConfigLock guard;
   size_t idx = getCurrentGaugeProfileIndex();
-  if (idx < activeGaugeCount) {
-    const GaugeConfig& config = activeGauges[idx];
-    if (config.type == GAUGE_TYPE_STANDARD) {
-        renderGenericGauge(config);
-        return;
-    }
+  if (idx >= activeGaugeCount) {
+    Paint_Clear(BLACK);
+    LCD_1IN28_Display(BlackImage);
+    return;
   }
 
-  // Fallbacks for custom gauges
-  switch (idx) {
-    case 4:
+  const GaugeConfig& config = activeGauges[idx];
+  switch (config.type) {
+    case GAUGE_TYPE_STANDARD:
+      renderGenericGauge(config);
+      return;
+    case GAUGE_TYPE_SHIFTLIGHT:
       renderShiftLightGauge();
       return;
-    case 5:
+    case GAUGE_TYPE_GMETER:
       renderGmeterGauge();
+      return;
+    case GAUGE_TYPE_ACCEL_TIMER:
+      renderAccelerationTimerGauge();
       return;
     default:
       Paint_Clear(BLACK);
       LCD_1IN28_Display(BlackImage);
       return;
   }
+}
+
+void renderConfigPortalScreen(bool portalActive, const char* ssid, const char* password) {
+  Paint_Clear(BLACK);
+  drawCenteredTextFixed(22, "SETTINGS", &Font_nokia_16, WHITE, BLACK);
+  if (portalActive) {
+    drawCenteredTextFixed(58, "CONFIG WI-FI ACTIVE", &Font_nokia_8, GBLUE, BLACK);
+    drawCenteredTextFixed(80, ssid, &Font_nokia_12, WHITE, BLACK);
+    drawCenteredTextFixed(108, password, &Font_nokia_12, YELLOW, BLACK);
+    drawCenteredTextFixed(134, "192.168.4.1", &Font_nokia_12, GRAY, BLACK);
+    Paint_DrawRectangle(34, 164, 206, 207, RED, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
+    drawCenteredTextFixed(178, "STOP HOTSPOT", &Font_nokia_12, RED, BLACK);
+  } else {
+    drawCenteredTextFixed(68, "CONFIGURATION", &Font_nokia_12, GRAY, BLACK);
+    Paint_DrawRectangle(28, 92, 212, 146, GBLUE, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
+    drawCenteredTextFixed(110, "START HOTSPOT", &Font_nokia_12, GBLUE, BLACK);
+    drawCenteredTextFixed(174, "SWIPE DOWN TO EXIT", &Font_nokia_8, GRAY, BLACK);
+  }
+  LCD_1IN28_Display(BlackImage);
 }

@@ -1,0 +1,40 @@
+name: Bug report
+description: Report a reproducible OpenGauge fault.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include vehicle identifiers, credentials, or other private data.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe what happened and what you expected.
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Commit and hardware revision
+      placeholder: Commit SHA, PCB revision, and Waveshare board revision
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Give the smallest repeatable sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Serial output
+      description: Paste relevant output, including the reset reason and backtrace.
+      render: text
+  - type: textarea
+    id: checks
+    attributes:
+      label: Checks completed
+      description: List firmware builds, previews, wiring checks, or hardware tests.

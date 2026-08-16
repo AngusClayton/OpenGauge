@@ -14,6 +14,11 @@ extern GaugeConfig activeGauges[MAX_GAUGES];
 extern size_t activeGaugeCount;
 
 void loadConfigFromJson();
+bool applyConfigJson(const char* json, size_t length, char* error, size_t errorSize);
+const char* getCurrentConfigJson();
+size_t getCurrentConfigJsonLength();
+void lockConfig();
+void unlockConfig();
 float getValueForSource(const char* sourceId);
 void updateAnalogSources();
 
@@ -21,3 +26,6 @@ size_t getCurrentGaugeProfileIndex();
 void applyGaugeProfile(size_t index);
 void nextGaugeProfile();
 void prevGaugeProfile();
+
+// True while the automatic 0-100 timer screen is active.
+bool isAccelerationTimerProfileActive();
