@@ -28,8 +28,8 @@ pio run --target buildfs
 ```
 
 On Windows, use `tools/wasm/build_wasm.ps1` instead of the shell script.
-Emscripten must be active. Do not commit `.pio` output. Commit the generated
-WASM assets only as part of an approved release change.
+Emscripten must be active. Do not commit `.pio` output or generated WASM
+assets. CI generates release copies from the C++ source.
 
 For display changes, generate a matching preview with
 `tools/gauge_preview.py`. Include an updated PNG when the visual result
@@ -103,3 +103,18 @@ instructions without safety notes.
 Describe the problem, the change, and how you tested it. State any hardware,
 vehicle, or sensor assumptions. Update the relevant documentation when the
 user-visible behaviour changes.
+
+## Create a release
+
+Only maintainers create releases. Complete these steps from a clean `main`
+branch:
+
+1. Confirm that the **Build OpenGauge** workflow passes.
+2. Create an annotated version tag, such as `v1.0.0`.
+3. Push the tag to GitHub.
+4. Confirm that the **Release OpenGauge** workflow publishes the ZIP, binary
+   files, and checksums.
+5. Test the release with the web installer before you announce it.
+
+The web installer always uses the most recent GitHub Release. Do not move a
+release tag after publication. Publish a new version tag for each correction.

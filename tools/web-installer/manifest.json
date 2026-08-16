@@ -1,0 +1,16 @@
+{
+  "name": "OpenGauge",
+  "version": "latest",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        {
+          "path": "https://github.com/AngusClayton/OpenGauge/releases/latest/download/opengauge-factory.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}

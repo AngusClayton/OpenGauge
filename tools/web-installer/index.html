@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#15171a">
+    <title>Install OpenGauge</title>
+    <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #15171a; color: #f3f5f7; }
+      main { box-sizing: border-box; width: min(92vw, 34rem); padding: 2rem; border: 1px solid #3d4248; border-radius: 1rem; background: #202328; }
+      h1 { margin-top: 0; font-size: clamp(2rem, 8vw, 3.5rem); }
+      p { line-height: 1.55; color: #cbd0d6; }
+      esp-web-install-button { display: block; margin: 2rem 0; }
+      button[slot='activate'] { min-height: 3.25rem; padding: 0 1.5rem; border: 0; border-radius: .6rem; background: #ef3340; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+      .warning { padding: 1rem; border-left: .25rem solid #efb034; background: #2b2922; }
+      a { color: #8fc8ff; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>OpenGauge</h1>
+      <p>Install the latest tagged release on a Waveshare ESP32-S3-Touch-LCD-1.28.</p>
+      <p class="warning">A fresh installation replaces the firmware and the complete configuration filesystem. Download your JSON configuration first.</p>
+      <esp-web-install-button manifest="manifest.json">
+        <button slot="activate">Connect and install</button>
+        <span slot="unsupported">Use Chrome or Edge on a desktop computer or Android device that supports Web Serial.</span>
+      </esp-web-install-button>
+      <p>Connect the board by USB, close serial monitors, and select its serial port. See the <a href="https://github.com/AngusClayton/OpenGauge">OpenGauge repository</a> for manual installation instructions.</p>
+    </main>
+  </body>
+</html>

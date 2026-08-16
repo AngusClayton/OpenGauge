@@ -67,9 +67,16 @@ The web UI is a separate LittleFS image. Build the WASM renderer before you
 build the filesystem image. If you do not build the WASM files, the editor
 works but exact browser previews show **WASM asset not installed**.
 
-The GitHub Actions **Build OpenGauge** workflow builds `firmware.bin`,
-`littlefs.bin`, and the WASM files. These files are development artifacts. A
-future release package will include separate installation instructions.
+For most users, install the latest tagged release with the
+[OpenGauge web installer](https://angusclayton.github.io/OpenGauge/). It writes
+the firmware and the web interface to a supported ESP32-S3 board. Chrome or
+Edge with Web Serial support is required.
+
+Permanent release packages are on the GitHub **Releases** page. Each release
+contains a merged factory image for browser installation, separate firmware
+and LittleFS images for manual installation, boot files, checksums, the WASM
+renderer, and a complete ZIP package. The **Build OpenGauge** workflow also
+produces a 14-day development artifact for each commit.
 
 For a local maintainer build:
 
@@ -97,9 +104,9 @@ pio run --target uploadfs
 ```
 
 > [!CAUTION]
-> The Upload Filesystem Image task replaces the complete LittleFS partition.
-> It can delete the saved `/config.json` file. Download the current JSON from
-> the web UI before you upload a new filesystem image.
+> The web installer and Upload Filesystem Image task replace the complete
+> LittleFS partition. They can delete the saved `/config.json` file. Download
+> the current JSON from the web UI before installation.
 
 Do not connect the device to a vehicle until you have checked its power,
 ground, CAN wiring, and sensor calibration.
