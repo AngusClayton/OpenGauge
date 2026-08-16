@@ -8,6 +8,7 @@
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 
 namespace {
 constexpr uint32_t kPortalIdleTimeoutMs = 10UL * 60UL * 1000UL;
@@ -64,7 +65,7 @@ void loadCredentials() {
   uint8_t mac[6] = {}; WiFi.macAddress(mac);
   snprintf(ssid, sizeof(ssid), "OpenGauge-%02X%02X%02X", mac[3], mac[4], mac[5]);
   Preferences preferences; preferences.begin("opengauge", false);
-  String saved = preferences.getString("apPassword", "");
+  String saved = preferences.isKey("apPassword") ? preferences.getString("apPassword", "") : String();
   if (saved.length() != 12) {
     static const char alphabet[] = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
     saved.reserve(12); for (int i = 0; i < 12; ++i) saved += alphabet[esp_random() % (sizeof(alphabet) - 1)];
@@ -76,10 +77,49 @@ void loadCredentials() {
 
 bool startConfigPortal() {
   if (active) return true;
-  if (!LittleFS.begin(false)) return false;
-  WiFi.mode(WIFI_AP); loadCredentials();
-  if (!WiFi.softAP(ssid, password, 1, false, 2)) return false;
-  dns.start(53, "*", WiFi.softAPIP());
+  Serial.printf("[PORTAL] Starting; free heap=%u, largest block=%u\n",
+                (unsigned int)ESP.getFreeHeap(),
+                (unsigned int)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL));
+  if (!LittleFS.begin(false)) {
+    Serial.println("[PORTAL] LittleFS mount failed");
+    return false;
+  }
+
+  // Start from a known radio state. A short settling delay avoids an AP start
+  // racing the asynchronous Wi-Fi driver transition on the ESP32-S3.
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_OFF);
+  delay(100);
+  if (!WiFi.mode(WIFI_AP)) {
+    Serial.println("[PORTAL] Failed to enter AP mode");
+    return false;
+  }
+  delay(100);
+  loadCredentials();
+  if (!WiFi.softAP(ssid, password, 1, false, 2)) {
+    Serial.println("[PORTAL] softAP start failed");
+    WiFi.mode(WIFI_OFF);
+    return false;
+  }
+
+  // Do not allow the Espressif-only long-range mode on the configuration AP.
+  // Phones and computers require the standard 802.11b/g/n beacon rates.
+  const esp_err_t protocolResult = esp_wifi_set_protocol(
+      WIFI_IF_AP, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+  const esp_err_t powerResult = esp_wifi_set_max_tx_power(78);  // 19.5 dBm
+  if (protocolResult != ESP_OK || powerResult != ESP_OK) {
+    Serial.printf("[PORTAL] Radio setup warning: protocol=%s, power=%s\n",
+                  esp_err_to_name(protocolResult), esp_err_to_name(powerResult));
+  }
+  delay(100);
+
+  const IPAddress portalIp = WiFi.softAPIP();
+  Serial.printf("[PORTAL] AP ready: SSID=%s, IP=%s, MAC=%s, channel=%d\n",
+                ssid, portalIp.toString().c_str(),
+                WiFi.softAPmacAddress().c_str(), WiFi.channel());
+  if (!dns.start(53, "*", portalIp)) {
+    Serial.println("[PORTAL] DNS server failed to start");
+  }
   if (!routesConfigured) { configureRoutes(); routesConfigured = true; }
   server.begin();
   lastActivityMs = millis(); stopRequested = false; active = true;

@@ -82,7 +82,7 @@ void obdTask(void *pvParameters) {
     }
 
     // Dynamic analog physical pin readings
-    if ((now - lastAnalogMs) >= analogIntervalMs) {
+    if (!isConfigPortalActive() && (now - lastAnalogMs) >= analogIntervalMs) {
       updateAnalogSources();
       lastAnalogMs = now;
     }
