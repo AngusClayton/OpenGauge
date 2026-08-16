@@ -1,6 +1,9 @@
 name: Deploy web installer
 
 on:
+  release:
+    types:
+      - published
   push:
     branches:
       - main
@@ -27,9 +30,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Prepare installer site
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          cp tools/web-installer/index.html _site/
+          cp tools/web-installer/manifest.json _site/
+          curl --fail --location --retry 3 \
+            --output _site/opengauge-factory.bin \
+            https://github.com/AngusClayton/OpenGauge/releases/latest/download/opengauge-factory.bin
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: tools/web-installer
+          path: _site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

@@ -7,7 +7,7 @@
       "chipFamily": "ESP32-S3",
       "parts": [
         {
-          "path": "https://github.com/AngusClayton/OpenGauge/releases/latest/download/opengauge-factory.bin",
+          "path": "opengauge-factory.bin",
           "offset": 0
         }
       ]
