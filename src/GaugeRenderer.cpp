@@ -517,7 +517,6 @@ void renderGmeterGauge() {
   static constexpr UWORD kGmeterGridColor = 0x4208;
   constexpr float kGmeterDisplayRange = 1.5f;
   constexpr uint32_t kGforceTrailWindowMs = 5000;
-  constexpr uint32_t kGforcePeakWindowMs = 30000;
 
   Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)radius, kGmeterGridColor, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
   Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)(radius / 2), kGmeterGridColor, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
@@ -542,7 +541,7 @@ void renderGmeterGauge() {
   float peakLongitudinal = 0.0f;
   for (size_t i = 0; i < kGforcePeakBufferSize; i++) {
     const GForcePeak& peak = gGforcePeakBuffer[i];
-    if (peak.timestampMs == 0 || (now - peak.timestampMs) > kGforcePeakWindowMs) {
+    if (peak.timestampMs == 0 || (now - peak.timestampMs) > kGforceTrailWindowMs) {
       continue;
     }
 
@@ -553,9 +552,6 @@ void renderGmeterGauge() {
       peakLongitudinal = peak.longitudinalG;
     }
 
-    if ((now - peak.timestampMs) > kGforceTrailWindowMs) {
-      continue;
-    }
     const float lateral = clampFloat(peak.lateralG, -kGmeterDisplayRange, kGmeterDisplayRange);
     const float longitudinal = clampFloat(peak.longitudinalG, -kGmeterDisplayRange, kGmeterDisplayRange);
     const int trailX = cx + (int)((lateral / kGmeterDisplayRange) * (float)maxDotTravel);

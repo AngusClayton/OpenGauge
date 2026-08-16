@@ -86,8 +86,8 @@ int main(int argc, char** argv) {
   }
   values["lateralG"] = lateralG = values["lateralG"];
   values["longitudinalG"] = longitudinalG = values["longitudinalG"];
-  // Preview a recent 5-second trail plus optional older 30-second peaks.
-  // peakLat/peakLong default to the current values when not supplied.
+  // Preview a five-second trail. peakLat/peakLong default to the current
+  // values when not supplied and represent a sample from the same window.
   const float previewPeakLat = values.count("peakLat") ? values["peakLat"] : lateralG;
   const float previewPeakLong = values.count("peakLong") ? values["peakLong"] : longitudinalG;
   for (size_t i = 0; i < 50; i++) {
@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
                 longitudinalG * fade + 0.08f * cosf((float)i * 0.45f),
                 fakeMillis - (uint32_t)(i * 100)};
   }
-  peaks[50] = {previewPeakLat, previewPeakLong, fakeMillis - 15000};
+  peaks[25] = {previewPeakLat, previewPeakLong, fakeMillis - 2500};
   obdValues.rpm=(uint16_t)std::clamp(values["rpm"],0.0f,65535.0f);
   obdValues.vehicle_speed_kmh=(uint8_t)std::clamp(values["speed"],0.0f,255.0f);
   cfg.type = type=="shiftlight" ? GAUGE_TYPE_SHIFTLIGHT :

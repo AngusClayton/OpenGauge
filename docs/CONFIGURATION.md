@@ -48,7 +48,7 @@ before you connect a sensor.
 | --- | --- |
 | `standard` | Main value, unit, and up to three secondary values. |
 | `shiftlight` | Gear, RPM, speed, and the shift arc. |
-| `gmeter` | Live G-force dot, trail, and peak readings. |
+| `gmeter` | Live G-force dot, five-second trail, and peak readings. |
 | `accelTimer` | Automatic 0-100 km/h timer that uses the `speed` source. |
 
 Standard-gauge fields:

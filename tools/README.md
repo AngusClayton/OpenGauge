@@ -30,7 +30,7 @@ python tools/gauge_preview.py --type standard --main-source boostPress --min -10
 # Shift-light gauge
 python tools/gauge_preview.py --type shiftlight --value rpm=5900 --value speed=120 -o shift.png --scale 3
 
-# G-meter with current motion and older peaks
+# G-meter with current motion and peaks from the trail window
 python tools/gauge_preview.py --type gmeter --value lateralG=-0.42 --value longitudinalG=0.18 --value peakLat=-0.95 --value peakLong=0.68 -o gmeter.png --scale 3
 
 # Completed 0-100 km/h run in 7.42 seconds
@@ -54,7 +54,7 @@ underlying 240 x 240 render.
 | `--scale` | Set integer nearest-neighbour PNG scale. |
 
 For a G-meter, `lateralG` and `longitudinalG` set the current dot. `peakLat`
-and `peakLong` simulate signed values from the 30-second peak window.
+and `peakLong` simulate signed values from the five-second trail window.
 For an acceleration-timer preview, `speed` sets the final speed and `timerMs`
 sets the elapsed test time after the simulated launch.
 
