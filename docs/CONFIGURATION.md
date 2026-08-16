@@ -5,6 +5,11 @@ changes are validated and applied live. At startup, the firmware tries the
 current file, its backup, and finally the embedded defaults, so an interrupted
 or invalid update remains recoverable.
 
+Use **Download JSON** before you upload a new filesystem image. The PlatformIO
+Upload Filesystem Image task replaces LittleFS and can remove the saved
+configuration. See the [configuration portal guide](../tools/configurator/README.md)
+for the VS Code and command-line procedures.
+
 ## Data sources
 
 `dataSources` defines each value that a gauge can use.

@@ -31,29 +31,75 @@ The repository does not yet include PCB files, a bill of materials, wiring
 drawings, or installation instructions. See [Hardware](docs/HARDWARE.md) for
 the current interface notes and planned hardware documentation.
 
-## Quick start
+## Quick start with VS Code
 
-1. Install [PlatformIO](https://platformio.org/).
-2. Clone this repository.
-3. Review `platformio.ini`. Set your upload and monitor port if required.
-4. Connect the board and the required CAN hardware.
-5. Build the firmware:
+1. Install Visual Studio Code.
+2. Install the **PlatformIO IDE** extension.
+3. Clone this repository and open its root folder in Visual Studio Code.
+4. Open `platformio.ini`. Set `upload_port` and `monitor_port` if automatic
+   port detection does not work.
+5. Connect the board.
+6. Select the PlatformIO icon in the Activity Bar.
+7. Open **Project Tasks > waveshare_esp32s3_touch_lcd_128 > General**.
+8. Select **Build**.
+9. Select **Upload** to write the firmware.
+10. Select **Monitor** to open the serial monitor at 115200 baud.
 
-   ```sh
-   pio run
+The PlatformIO toolbar also has Build, Upload, and Monitor buttons. The Upload
+task writes the firmware only. It does not write the configuration web files.
+
+## Quick start with the command line
+
+Run these commands from the repository root:
+
+```sh
+pio run
+pio run --target upload
+pio device monitor --baud 115200
+```
+
+If `pio` is not on `PATH`, open a PlatformIO Core CLI terminal from Visual
+Studio Code and run the commands there.
+
+## Install the configuration web UI
+
+The web UI is a separate LittleFS image. Build the WASM renderer before you
+build the filesystem image. If you do not build the WASM files, the editor
+works but exact browser previews show **WASM asset not installed**.
+
+The GitHub Actions **Build OpenGauge** workflow builds `firmware.bin`,
+`littlefs.bin`, and the WASM files. These files are development artifacts. A
+future release package will include separate installation instructions.
+
+For a local maintainer build:
+
+1. Install and activate Emscripten so that `em++` is available.
+2. Run the applicable WASM build script:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools/wasm/build_wasm.ps1
    ```
 
-6. Upload the firmware:
-
    ```sh
-   pio run -t upload
+   bash tools/wasm/build_wasm.sh
    ```
 
-7. Open the serial monitor:
+3. In the PlatformIO Task Explorer, open the project environment.
+4. Select **Platform > Build Filesystem Image** if this task is available.
+5. Select **Platform > Upload Filesystem Image**. Some PlatformIO versions
+   show **Upload File System image**.
 
-   ```sh
-   pio device monitor --baud 115200
-   ```
+The command-line equivalents are:
+
+```sh
+pio run --target buildfs
+pio run --target uploadfs
+```
+
+> [!CAUTION]
+> The Upload Filesystem Image task replaces the complete LittleFS partition.
+> It can delete the saved `/config.json` file. Download the current JSON from
+> the web UI before you upload a new filesystem image.
 
 Do not connect the device to a vehicle until you have checked its power,
 ground, CAN wiring, and sensor calibration.
@@ -63,6 +109,7 @@ ground, CAN wiring, and sensor calibration.
 Swipe up on the gauge and start its temporary configuration hotspot. The gauge
 shows the device-specific Wi-Fi name and password. The captive portal can edit,
 preview, upload, download, save, and apply the versioned JSON without rebooting.
+The firmware pauses analogue input sampling while the hotspot is active.
 See [Configuration](docs/CONFIGURATION.md) and the
 [configuration portal](tools/configurator/README.md).
 
