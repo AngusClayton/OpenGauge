@@ -3,6 +3,8 @@
 #include "ConfigManager.h"
 #include <Arduino.h>
 #include <LittleFS.h>
+#include <memory>
+#include <new>
 
 namespace {
 constexpr const char* kCurrentPath = "/config.json";
@@ -40,8 +42,12 @@ bool loadPersistedConfig(char* error, size_t errorSize) {
 
 bool saveAndApplyConfig(const char* json, size_t length, char* error, size_t errorSize) {
   if (!gMounted) { if (error && errorSize) snprintf(error, errorSize, "Configuration storage is unavailable."); return false; }
-  ParsedOpenGaugeConfig candidate{};
-  if (!parseOpenGaugeConfig(json, length, candidate, error, errorSize)) return false;
+  std::unique_ptr<ParsedOpenGaugeConfig> candidate(new (std::nothrow) ParsedOpenGaugeConfig{});
+  if (!candidate) {
+    if (error && errorSize) snprintf(error, errorSize, "Not enough memory to validate configuration.");
+    return false;
+  }
+  if (!parseOpenGaugeConfig(json, length, *candidate, error, errorSize)) return false;
 
   LittleFS.remove(kTemporaryPath);
   File temporary = LittleFS.open(kTemporaryPath, "w");
@@ -63,9 +69,10 @@ bool saveAndApplyConfig(const char* json, size_t length, char* error, size_t err
     if (error && errorSize) snprintf(error, errorSize, "Could not commit the new configuration.");
     return false;
   }
-  if (!applyConfigJson(json, length, error, errorSize)) {
+  if (!applyParsedOpenGaugeConfig(*candidate, json, length)) {
     LittleFS.remove(kCurrentPath);
     if (LittleFS.exists(kBackupPath)) LittleFS.rename(kBackupPath, kCurrentPath);
+    if (error && errorSize) snprintf(error, errorSize, "Could not apply the validated configuration.");
     return false;
   }
   return true;

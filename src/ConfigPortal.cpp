@@ -52,9 +52,15 @@ void configureRoutes() {
 }
 
 void portalTask(void*) {
+  uint32_t lastStackLogMs = 0;
   while (active && !stopRequested) {
     dns.processNextRequest(); server.handleClient();
     if ((millis() - lastActivityMs) >= kPortalIdleTimeoutMs) stopRequested = true;
+    if ((millis() - lastStackLogMs) >= 30000) {
+      Serial.printf("[PORTAL] Stack watermark: %u bytes\n",
+                    (unsigned int)(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)));
+      lastStackLogMs = millis();
+    }
     vTaskDelay(pdMS_TO_TICKS(5));
   }
   server.stop(); dns.stop(); WiFi.softAPdisconnect(true); WiFi.mode(WIFI_OFF);
@@ -123,7 +129,9 @@ bool startConfigPortal() {
   if (!routesConfigured) { configureRoutes(); routesConfigured = true; }
   server.begin();
   lastActivityMs = millis(); stopRequested = false; active = true;
-  if (xTaskCreatePinnedToCore(portalTask, "CONFIG_PORTAL", 6144, nullptr, 1, &portalTaskHandle, 0) != pdPASS) {
+  // WebServer request handling, JSON validation, and LittleFS transactions form
+  // a deep call chain. Keep adequate headroom for a full 32 KB config upload.
+  if (xTaskCreatePinnedToCore(portalTask, "CONFIG_PORTAL", 12288, nullptr, 1, &portalTaskHandle, 0) != pdPASS) {
     active = false; dns.stop(); WiFi.softAPdisconnect(true); return false;
   }
   return true;

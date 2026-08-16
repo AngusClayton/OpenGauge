@@ -18,4 +18,9 @@ bool parseOpenGaugeConfig(const char* json, size_t length,
                           ParsedOpenGaugeConfig& output,
                           char* error, size_t errorSize);
 
+// Apply an object that has already passed parseOpenGaugeConfig(). This avoids
+// retaining two large parsed copies during an on-device save request.
+bool applyParsedOpenGaugeConfig(const ParsedOpenGaugeConfig& parsed,
+                                const char* json, size_t length);
+
 const char* getDefaultOpenGaugeConfigJson();

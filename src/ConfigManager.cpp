@@ -6,6 +6,8 @@
 #include "ConfigCodec.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <memory>
+#include <new>
 
 DataSourceConfig activeDataSources[MAX_DATA_SOURCES];
 size_t activeDataSourceCount = 0;
@@ -216,10 +218,8 @@ void unlockConfig() {
   if (gConfigMutex) xSemaphoreGiveRecursive(gConfigMutex);
 }
 
-bool applyConfigJson(const char* json, size_t length, char* error, size_t errorSize) {
-  ParsedOpenGaugeConfig parsed{};
-  if (!parseOpenGaugeConfig(json, length, parsed, error, errorSize)) return false;
-
+bool applyParsedOpenGaugeConfig(const ParsedOpenGaugeConfig& parsed,
+                                const char* json, size_t length) {
   lockConfig();
   memcpy(activeDataSources, parsed.dataSources, sizeof(activeDataSources));
   activeDataSourceCount = parsed.dataSourceCount;
@@ -230,6 +230,16 @@ bool applyConfigJson(const char* json, size_t length, char* error, size_t errorS
   if (activeGaugeCount) applyGaugeProfile(gCurrentGaugeProfileIndex < activeGaugeCount ? gCurrentGaugeProfileIndex : 0);
   unlockConfig();
   return true;
+}
+
+bool applyConfigJson(const char* json, size_t length, char* error, size_t errorSize) {
+  std::unique_ptr<ParsedOpenGaugeConfig> parsed(new (std::nothrow) ParsedOpenGaugeConfig{});
+  if (!parsed) {
+    if (error && errorSize) snprintf(error, errorSize, "Not enough memory to parse configuration.");
+    return false;
+  }
+  if (!parseOpenGaugeConfig(json, length, *parsed, error, errorSize)) return false;
+  return applyParsedOpenGaugeConfig(*parsed, json, length);
 }
 
 const char* getCurrentConfigJson() { return gCurrentConfigJson.c_str(); }
