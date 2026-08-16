@@ -13,8 +13,12 @@ struct SecondaryMetric {
     char sourceId[16];
     char prefix[16];
     char suffix[8];
-    int posY;
-    bool dynamicColor;
+    bool rangeColors;
+    float lowerThreshold;
+    float upperThreshold;
+    char colorBelow[8];
+    char colorBetween[8];
+    char colorAbove[8];
 };
 
 struct GaugeConfig {

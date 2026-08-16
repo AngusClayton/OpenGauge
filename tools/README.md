@@ -25,7 +25,7 @@ Run these commands from the repository root:
 
 ```powershell
 # Standard gauge
-python tools/gauge_preview.py --type standard --main-source boostPress --min -10 --max 25 --unit "Boost (PSI)" --boost-units --value boostPress=12.4 --value waterTemp=92 --value intakeTemp=31 --secondary "waterTemp,Water: ,C,180,dynamic" --secondary "intakeTemp,AIT: ,C,208" -o boost.png --scale 3
+python tools/gauge_preview.py --type standard --main-source boostPress --min -10 --max 25 --unit "Boost (PSI)" --boost-units --value boostPress=12.4 --value waterTemp=92 --value intakeTemp=31 --secondary "waterTemp,Water: ,C,range,80,105,blue,cyan,red" --secondary "intakeTemp,AIT: ,C" -o boost.png --scale 3
 
 # Shift-light gauge
 python tools/gauge_preview.py --type shiftlight --value rpm=5900 --value speed=120 -o shift.png --scale 3
@@ -47,7 +47,7 @@ underlying 240 x 240 render.
 | `--type` | Select `standard`, `shiftlight`, `gmeter`, or `accelTimer`. |
 | `--value NAME=NUMBER` | Set a simulated sensor value. Repeat as needed. |
 | `--main-source`, `--min`, `--max`, `--unit` | Set standard-gauge inputs. |
-| `--secondary` | Add a standard secondary value: `source,prefix,suffix,y[,dynamic]`. |
+| `--secondary` | Add a standard secondary value: `source,prefix,suffix[,range,low,high,below,between,above]`. |
 | `--boost-units` | Use inHg for negative values and PSI for positive values. |
 | `--offline` | Show the offline IMU state. |
 | `--output`, `-o` | Set the PNG path. |
@@ -63,3 +63,9 @@ sets the elapsed test time after the simulated launch.
 Add the production renderer in `src/GaugeRenderer.cpp`. Then add one host
 dispatch branch in `tools/host/preview_main.cpp` and any required simulated
 inputs. Do not duplicate drawing code in Python.
+
+## Configuration portal prototype
+
+Run `python tools/configurator/server.py` to start the local visual editor.
+See [Configurator prototype](configurator/README.md). It uses the native
+renderer for its PNG previews and does not modify ESP32 firmware behaviour.

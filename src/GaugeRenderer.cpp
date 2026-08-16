@@ -12,9 +12,6 @@
 
 extern UWORD *BlackImage;
 
-static constexpr UWORD kColdWaterColor = BLUE;
-static constexpr UWORD kNormalWaterColor = GBLUE;
-static constexpr UWORD kHotWaterColor = RED;
 static constexpr UWORD kShiftTrackColor = GRAY;
 static constexpr UWORD kShiftOrangeColor = 0xFD20;
 
@@ -29,7 +26,7 @@ struct ShiftGearConfig {
   uint16_t targetShiftRpm;
 };
 
-static const ShiftGearConfig kShiftGearTable[] = {
+static ShiftGearConfig kShiftGearTable[] = {
   {1, 115.4f, 6500},
   {2, 73.2f, 6300},
   {3, 49.2f, 6100},
@@ -37,6 +34,16 @@ static const ShiftGearConfig kShiftGearTable[] = {
   {5, 28.6f, 5800},
   {6, 24.0f, 0},
 };
+
+void setShiftTargetRpm(uint8_t gear, uint16_t targetRpm) {
+  const size_t gearCount = sizeof(kShiftGearTable) / sizeof(kShiftGearTable[0]);
+  for (size_t i = 0; i < gearCount; i++) {
+    if (kShiftGearTable[i].gearNumber == gear) {
+      kShiftGearTable[i].targetShiftRpm = targetRpm;
+      return;
+    }
+  }
+}
 
 /**
  * @brief Manages the display delay timer when an OBD connection issue arises.
@@ -75,21 +82,24 @@ float clampFloat(float value, float minValue, float maxValue) {
 }
 
 /**
- * @brief Determines the dynamic text color depending on engine coolant temperature.
- * 
- * Cold: Blue. Normal: Teal/GBlue. Overheating (>105C): Red flash.
- * 
- * @param waterTempC Temperature value in Celsius.
- * @return UWORD 16-bit color code for the LCD library.
+ * @brief Resolve a configured colour name to the display's RGB565 value.
  */
-UWORD waterTempColor(float waterTempC) {
-  if (waterTempC < 80.0f) {
-    return kColdWaterColor;
-  }
-  if (waterTempC > 105.0f) {
-    return kHotWaterColor;
-  }
-  return kNormalWaterColor;
+UWORD configuredColor(const char* name) {
+  if (strcmp(name, "white") == 0) return WHITE;
+  if (strcmp(name, "gray") == 0) return GRAY;
+  if (strcmp(name, "blue") == 0) return BLUE;
+  if (strcmp(name, "cyan") == 0) return GBLUE;
+  if (strcmp(name, "green") == 0) return GREEN;
+  if (strcmp(name, "yellow") == 0) return YELLOW;
+  if (strcmp(name, "orange") == 0) return kShiftOrangeColor;
+  if (strcmp(name, "red") == 0) return RED;
+  return GBLUE;
+}
+
+UWORD rangeColor(float value, const SecondaryMetric& metric) {
+  if (value < metric.lowerThreshold) return configuredColor(metric.colorBelow);
+  if (value > metric.upperThreshold) return configuredColor(metric.colorAbove);
+  return configuredColor(metric.colorBetween);
 }
 
 /**
@@ -441,18 +451,23 @@ static volatile uint32_t gAccelerationTimerElapsedMs = 0;
  * @brief Advance the 0-100 timer state from the high-frequency OBD task.
  */
 void updateAccelerationTimer() {
-  constexpr float kTimerArmSpeedKph = 1.0f;
-  constexpr float kTimerFinishSpeedKph = 100.0f;
-  const float speedKph = (float)obdValues.vehicle_speed_kmh;
+  const size_t profileIndex = getCurrentGaugeProfileIndex();
+  if (profileIndex >= activeGaugeCount || activeGauges[profileIndex].type != GAUGE_TYPE_ACCEL_TIMER) {
+    return;
+  }
+  const GaugeConfig& config = activeGauges[profileIndex];
+  const float startSpeed = config.minVal;
+  const float finishSpeed = config.maxVal;
+  const float speed = getValueForSource(config.mainSourceId);
   const uint32_t now = millis();
 
-  if (speedKph <= kTimerArmSpeedKph) {
+  if (speed <= startSpeed) {
     gAccelerationTimerState = ACCEL_TIMER_ARMED;
     gAccelerationTimerElapsedMs = 0;
   } else if (gAccelerationTimerState == ACCEL_TIMER_ARMED) {
     gAccelerationTimerState = ACCEL_TIMER_RUNNING;
     gAccelerationTimerStartMs = now;
-  } else if (gAccelerationTimerState == ACCEL_TIMER_RUNNING && speedKph >= kTimerFinishSpeedKph) {
+  } else if (gAccelerationTimerState == ACCEL_TIMER_RUNNING && speed >= finishSpeed) {
     gAccelerationTimerElapsedMs = now - gAccelerationTimerStartMs;
     gAccelerationTimerState = ACCEL_TIMER_COMPLETE;
   }
@@ -467,24 +482,30 @@ void updateAccelerationTimer() {
 void renderAccelerationTimerGauge() {
   Paint_Clear(BLACK);
 
-  constexpr float kTimerFinishSpeedKph = 100.0f;
-  const float speedKph = (float)obdValues.vehicle_speed_kmh;
+  const size_t profileIndex = getCurrentGaugeProfileIndex();
+  if (profileIndex >= activeGaugeCount) {
+    return;
+  }
+  const GaugeConfig& config = activeGauges[profileIndex];
+  const float speed = getValueForSource(config.mainSourceId);
+  const float speedRange = config.maxVal - config.minVal;
   const uint32_t now = millis();
   // Keep direct renderer calls, including native previews, self-contained.
   // During normal use the OBD task updates this state at a higher cadence.
   updateAccelerationTimer();
 
-  const float speedSweep = 240.0f * clampFloat(speedKph, 0.0f, kTimerFinishSpeedKph) / kTimerFinishSpeedKph;
+  const float speedSweep = speedRange > 0.0f ? 240.0f * (clampFloat(speed, config.minVal, config.maxVal) - config.minVal) / speedRange : 0.0f;
   drawClockArc(120, 120, 112, 14, 240.0f, 240.0f, GRAY);
   if (speedSweep > 0.5f) {
     drawClockArc(120, 120, 112, 14, 240.0f, speedSweep, GBLUE);
   }
 
   char buffer[32];
-  drawCenteredTextFixed(38, "0-100", &Font_nokia_12, WHITE, BLACK);
-  snprintf(buffer, sizeof(buffer), "%u", (unsigned int)obdValues.vehicle_speed_kmh);
+  snprintf(buffer, sizeof(buffer), "%.0f-%.0f", (double)config.minVal, (double)config.maxVal);
+  drawCenteredTextFixed(38, buffer, &Font_nokia_12, WHITE, BLACK);
+  snprintf(buffer, sizeof(buffer), "%.0f", (double)speed);
   drawCenteredTextScaledByInk(56, buffer, &Font_nokia_20, 2, GBLUE, BLACK);
-  drawCenteredTextFixed(98, "km/h", &Font_nokia_8, GRAY, BLACK);
+  drawCenteredTextFixed(98, config.unitLabel, &Font_nokia_8, GRAY, BLACK);
 
   uint32_t elapsedMs = gAccelerationTimerElapsedMs;
   if (gAccelerationTimerState == ACCEL_TIMER_RUNNING) {
@@ -652,8 +673,8 @@ void renderGenericGauge(const GaugeConfig& config) {
       }
       
       UWORD color = GBLUE;
-      if (sec.dynamicColor) {
-          color = waterTempColor(secVal);
+      if (sec.rangeColors) {
+          color = rangeColor(secVal, sec);
       }
       
       const UWORD valueY = config.secondaryCount <= 2 ? (UWORD)(120 + i * 54) : (UWORD)(102 + i * 44);

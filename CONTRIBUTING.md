@@ -1,6 +1,6 @@
-# Contributing to 32GAUGE
+# Contributing to OpenGauge
 
-Thank you for improving 32GAUGE.
+Thank you for improving OpenGauge.
 
 ## Before you start
 

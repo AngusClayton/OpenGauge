@@ -51,6 +51,9 @@ before you connect a sensor.
 | `gmeter` | Live G-force dot, five-second trail, and peak readings. |
 | `accelTimer` | Automatic 0-100 km/h timer that uses the `speed` source. |
 
+Shift-light profiles use `shiftTargets`, an array containing the target RPM for
+gears 1 through 6. Use `0` when a gear has no shift target.
+
 Standard-gauge fields:
 
 | Field | Use |
@@ -69,8 +72,17 @@ A secondary object has these fields:
 | `sourceId` | Source for the value. |
 | `prefix` | Label shown below the secondary value. A trailing colon is removed. |
 | `suffix` | Unit shown with the value. |
-| `dynamicColor` | Uses blue, cyan, or red for temperature values. |
-| `posY` | Retained for compatibility. The current standard layout uses fixed vertical slots instead. |
+| `rangeColors` | Enables value-based colouring for this reading. |
+| `lowerThreshold` | Values below this boundary use `colorBelow`. |
+| `upperThreshold` | Values above this boundary use `colorAbove`. |
+| `colorBelow` | Colour used below the lower threshold. |
+| `colorBetween` | Colour used between the two thresholds. |
+| `colorAbove` | Colour used above the upper threshold. |
+
+Supported colour names are `white`, `gray`, `blue`, `cyan`, `green`, `yellow`,
+`orange`, and `red`. The range system is not temperature-specific. It can show
+safe and warning ranges for pressure, temperature, fluid level, or any other
+numeric source.
 
 Example boost profile:
 
@@ -84,8 +96,8 @@ Example boost profile:
   "unitLabel": "Boost (PSI)",
   "boostUnits": true,
   "secondaries": [
-    { "sourceId": "waterTemp", "prefix": "Water: ", "suffix": "C", "dynamicColor": true },
-    { "sourceId": "intakeTemp", "prefix": "AIT: ", "suffix": "C", "dynamicColor": false }
+    { "sourceId": "waterTemp", "prefix": "Water: ", "suffix": "C", "rangeColors": true, "lowerThreshold": 80, "upperThreshold": 105, "colorBelow": "blue", "colorBetween": "cyan", "colorAbove": "red" },
+    { "sourceId": "intakeTemp", "prefix": "AIT: ", "suffix": "C", "rangeColors": false }
   ]
 }
 ```
@@ -98,11 +110,11 @@ more than three secondary values so each value can stay readable.
 
 ## 0-100 timer
 
-The default `accelTimer` profile uses the OBD `speed` source. It arms at
-1 km/h or below. It starts when speed rises above 1 km/h. It stops when speed
-reaches 100 km/h. The result remains on screen until the vehicle stops and the
-timer arms again. While this profile is active, the firmware requests speed at
-50 Hz and updates the timer from the OBD task, not the display task.
+The default `accelTimer` profile uses the OBD `speed` source. It arms at the
+configured `minVal`, starts when speed rises above it, and stops at `maxVal`.
+The result remains on screen until speed returns to `minVal`. While this profile
+is active, the firmware requests speed at 50 Hz and updates the timer from the
+OBD task, not the display task.
 
 Use a profile like this:
 

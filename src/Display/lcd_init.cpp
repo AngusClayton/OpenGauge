@@ -79,7 +79,7 @@ void displayStartupMessage() {
   Paint_SetScale(65);
   Paint_Clear(BLACK);
   
-  Paint_DrawString_EN(40, 90, "32Guage", &Font24, BLACK, WHITE);
+  Paint_DrawString_EN(47, 90, "OpenGauge", &Font24, BLACK, WHITE);
   Paint_DrawString_EN(40, 120, "Initializing...", &Font16, BLACK, WHITE);
   
   LCD_1IN28_Display(BlackImage);

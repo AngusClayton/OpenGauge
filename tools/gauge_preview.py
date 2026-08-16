@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build/run the real C++ gauge renderer and convert its RGB565 output to PNG."""
-import argparse, struct, subprocess, sys, tempfile, zlib
+import argparse, json, struct, subprocess, sys, tempfile, zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,23 +40,67 @@ def png(raw_path, output, scale):
     data=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',w,h,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(rows,9))+chunk(b'IEND',b'')
     output.parent.mkdir(parents=True,exist_ok=True); output.write_bytes(data)
 
+def render_host(args, output, scale=1):
+    """Run the native renderer and convert its RGB565 framebuffer to PNG."""
+    build()
+    with tempfile.TemporaryDirectory() as d:
+        raw=Path(d)/'frame.rgb565'
+        subprocess.run([str(EXE), *args, '--raw', str(raw)], check=True)
+        png(raw, output, max(1, scale))
+
+def render_config_preview(config, gauge_index, samples, output, scale=1):
+    """Render one versioned config document through the production C++ code."""
+    gauges=config['gauges']
+    gauge=gauges[gauge_index]
+    gauge_type=gauge['type']
+    args=['--type', gauge_type]
+    if gauge_type == 'standard':
+        args += ['--main-source', gauge.get('mainSourceId','value'),
+                 '--min', str(gauge.get('minVal',0)), '--max', str(gauge.get('maxVal',100)),
+                 '--unit', gauge.get('unitLabel','')]
+        if gauge.get('boostUnits', False): args += ['--boost-units']
+        for secondary in gauge.get('secondaries',[]):
+            fields=[secondary.get('sourceId',''), secondary.get('prefix',''), secondary.get('suffix','')]
+            if secondary.get('rangeColors'):
+                fields += ['range', str(secondary.get('lowerThreshold',0)), str(secondary.get('upperThreshold',100)),
+                           secondary.get('colorBelow','blue'), secondary.get('colorBetween','cyan'), secondary.get('colorAbove','red')]
+            args += ['--secondary', ','.join(fields)]
+    elif gauge_type == 'shiftlight':
+        targets=gauge.get('shiftTargets',[6500,6300,6100,6000,5800,0])
+        args += ['--shift-targets', ','.join(str(int(value)) for value in targets)]
+    elif gauge_type == 'accelTimer':
+        args += ['--main-source', gauge.get('mainSourceId','speed'),
+                 '--min', str(gauge.get('minVal',0)), '--max', str(gauge.get('maxVal',100)),
+                 '--unit', gauge.get('unitLabel','km/h')]
+    for name, value in samples.items():
+        args += ['--value', f'{name}={value}']
+    render_host(args, Path(output), scale)
+
 def main():
-    p=argparse.ArgumentParser(description='Preview using the real 32GUAGE C++ renderer')
+    p=argparse.ArgumentParser(description='Preview using the real OpenGauge C++ renderer')
     p.add_argument('--type',choices=('standard','shiftlight','gmeter','accelTimer'),default='standard')
+    p.add_argument('--config',type=Path,help='versioned config JSON document')
+    p.add_argument('--gauge-index',type=int,default=0,help='zero-based gauge index for --config')
+    p.add_argument('--samples',default='{}',help='JSON object of sample values for --config')
     p.add_argument('--value',action='append',default=[],metavar='NAME=NUMBER')
     p.add_argument('--main-source',default='value'); p.add_argument('--min',type=float,default=0); p.add_argument('--max',type=float,default=100)
     p.add_argument('--unit',default=''); p.add_argument('--boost-units',action='store_true')
-    p.add_argument('--secondary',action='append',default=[],metavar='SOURCE,PREFIX,SUFFIX,Y[,dynamic]')
+    p.add_argument('--secondary',action='append',default=[],metavar='SOURCE,PREFIX,SUFFIX[,range,low,high,below,between,above]')
     p.add_argument('--offline',action='store_true',help='simulate an offline IMU'); p.add_argument('-o','--output',type=Path,default=Path('preview.png'))
     p.add_argument('--scale',type=int,default=1)
-    a=p.parse_args(); build()
-    with tempfile.TemporaryDirectory() as d:
-        raw=Path(d)/'frame.rgb565'
-        cmd=[str(EXE),'--type',a.type,'--raw',str(raw),'--main-source',a.main_source,'--min',str(a.min),'--max',str(a.max),'--unit',a.unit]
+    a=p.parse_args()
+    if a.config:
+        config=json.loads(a.config.read_text(encoding='utf-8'))
+        samples=json.loads(a.samples)
+        render_config_preview(config, a.gauge_index, samples, a.output, a.scale)
+        rendered_type=config['gauges'][a.gauge_index]['type']
+    else:
+        cmd=['--type',a.type,'--main-source',a.main_source,'--min',str(a.min),'--max',str(a.max),'--unit',a.unit]
         for v in a.value: cmd += ['--value',v]
         for s in a.secondary: cmd += ['--secondary',s]
         if a.boost_units: cmd += ['--boost-units']
         if a.offline: cmd += ['--offline']
-        subprocess.run(cmd,check=True); png(raw,a.output,max(1,a.scale))
-    print(f'Rendered real C++ {a.type} gauge to {a.output}')
+        render_host(cmd, a.output, a.scale)
+        rendered_type=a.type
+    print(f'Rendered real C++ {rendered_type} gauge to {a.output}')
 if __name__=='__main__': main()

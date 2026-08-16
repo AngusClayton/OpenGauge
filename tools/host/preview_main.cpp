@@ -21,6 +21,7 @@ void renderGenericGauge(const GaugeConfig& config);
 void renderShiftLightGauge();
 void renderGmeterGauge();
 void renderAccelerationTimerGauge();
+void setShiftTargetRpm(uint8_t gear, uint16_t targetRpm);
 
 UWORD framebuffer[240 * 240];
 UWORD* BlackImage = framebuffer;
@@ -51,7 +52,8 @@ void LCD_1IN28_Display(UWORD*) {}
 static void usage() {
   std::puts("preview_host --type standard|shiftlight|gmeter|accelTimer [options] --raw output.rgb565\n"
             "  --value name=number  --main-source name  --min n  --max n  --unit text\n"
-            "  --secondary source,prefix,suffix,y[,dynamic]  --boost-units");
+            "  --secondary source,prefix,suffix[,range,low,high,below,between,above]  --shift-targets r1,r2,r3,r4,r5,r6\n"
+            "  --boost-units");
 }
 
 int main(int argc, char** argv) {
@@ -72,16 +74,32 @@ int main(int argc, char** argv) {
     else if(a=="--unit") unit=next();
     else if(a=="--boost-units") boostUnits=true;
     else if(a=="--offline") imuReady=false;
+    else if(a=="--shift-targets") {
+      std::string targets=next(); size_t start=0;
+      for (uint8_t gear=1; gear<=6; gear++) {
+        const size_t comma=targets.find(',', start);
+        const std::string value=targets.substr(start, comma-start);
+        if (value.empty()) return 2;
+        setShiftTargetRpm(gear, (uint16_t)std::stoul(value));
+        if (comma == std::string::npos && gear != 6) return 2;
+        start=comma + 1;
+      }
+    }
     else if(a=="--value") { auto s=next(); auto p=s.find('='); if(p==std::string::npos) return 2; values[s.substr(0,p)]=std::stof(s.substr(p+1)); }
     else if(a=="--secondary") {
-      std::string s=next(); size_t start=0; std::string fields[5]; int n=0;
-      while(n<5) { auto p=s.find(',',start); fields[n++]=s.substr(start,p-start); if(p==std::string::npos) break; start=p+1; }
-      if(n<4 || cfg.secondaryCount>=3) return 2;
+      std::string s=next(); size_t start=0; std::string fields[9]; int n=0;
+      while(n<9) { auto p=s.find(',',start); fields[n++]=s.substr(start,p-start); if(p==std::string::npos) break; start=p+1; }
+      if(n<3 || cfg.secondaryCount>=3) return 2;
       auto& sec=cfg.secondaries[cfg.secondaryCount++];
       std::snprintf(sec.sourceId,sizeof sec.sourceId,"%s",fields[0].c_str());
       std::snprintf(sec.prefix,sizeof sec.prefix,"%s",fields[1].c_str());
       std::snprintf(sec.suffix,sizeof sec.suffix,"%s",fields[2].c_str());
-      sec.posY=std::stoi(fields[3]); sec.dynamicColor=n==5 && fields[4]=="dynamic";
+      sec.rangeColors=n>=4 && fields[3]=="range";
+      sec.lowerThreshold=n>=5 ? std::stof(fields[4]) : 0.0f;
+      sec.upperThreshold=n>=6 ? std::stof(fields[5]) : 100.0f;
+      std::snprintf(sec.colorBelow,sizeof sec.colorBelow,"%s",n>=7?fields[6].c_str():"blue");
+      std::snprintf(sec.colorBetween,sizeof sec.colorBetween,"%s",n>=8?fields[7].c_str():"cyan");
+      std::snprintf(sec.colorAbove,sizeof sec.colorAbove,"%s",n>=9?fields[8].c_str():"red");
     } else { usage(); return 2; }
   }
   values["lateralG"] = lateralG = values["lateralG"];
@@ -111,16 +129,16 @@ int main(int argc, char** argv) {
   else if(type=="accelTimer") {
     // A preview process has no prior display frames. Create one stopped frame,
     // then one moving frame, so the final frame shows a real timer state.
-    const uint8_t finalSpeed = obdValues.vehicle_speed_kmh;
+    const float finalSpeed = values[mainSource];
     const uint32_t previewElapsedMs = (uint32_t)std::max(0.0f, values["timerMs"]);
     fakeMillis = 0;
-    obdValues.vehicle_speed_kmh = 0;
+    values[mainSource] = minVal;
     renderAccelerationTimerGauge();
     fakeMillis = 100;
-    obdValues.vehicle_speed_kmh = 2;
+    values[mainSource] = minVal + 1.0f;
     renderAccelerationTimerGauge();
     fakeMillis += previewElapsedMs;
-    obdValues.vehicle_speed_kmh = finalSpeed;
+    values[mainSource] = finalSpeed;
     renderAccelerationTimerGauge();
   }
   else renderGenericGauge(cfg);

@@ -213,7 +213,7 @@ void loop() {
                     delay(100); 
                     
                     Serial.printf("Starting BLE. Free Heap: %d\n", ESP.getFreeHeap());
-                    startBLEConfigMode("32Guage_Config", getCurrentConfigJson(), onConfigUpdate);
+                    startBLEConfigMode("OpenGauge_Config", getCurrentConfigJson(), onConfigUpdate);
                     touchDisabled = millis() + 500;
                  }
                  // Demo Mode Button (Y: 150-190)

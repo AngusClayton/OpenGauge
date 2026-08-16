@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include <Arduino.h>
 #include "obd/pid_schedule.h"
+#include "GaugeRenderer.h"
 
 DataSourceConfig activeDataSources[MAX_DATA_SOURCES];
 size_t activeDataSourceCount = 0;
@@ -30,8 +31,8 @@ const char* gaugesJson = R"====([
     "unitLabel": "Boost (PSI)",
     "boostUnits": true,
     "secondaries": [
-      { "sourceId": "waterTemp", "prefix": "Water: ", "suffix": "C", "posY": 180, "dynamicColor": true },
-      { "sourceId": "intakeTemp", "prefix": "AIT: ", "suffix": "C", "posY": 208, "dynamicColor": false }
+      { "sourceId": "waterTemp", "prefix": "Water: ", "suffix": "C", "rangeColors": true, "lowerThreshold": 80.0, "upperThreshold": 105.0, "colorBelow": "blue", "colorBetween": "cyan", "colorAbove": "red" },
+      { "sourceId": "intakeTemp", "prefix": "AIT: ", "suffix": "C", "rangeColors": false }
     ]
   },
   {
@@ -41,7 +42,7 @@ const char* gaugesJson = R"====([
     "minVal": 0.0, "maxVal": 300.0,
     "unitLabel": "HP",
     "secondaries": [
-      { "sourceId": "maf", "prefix": "MAF: ", "suffix": " g/s", "posY": 168, "dynamicColor": false }
+      { "sourceId": "maf", "prefix": "MAF: ", "suffix": " g/s", "rangeColors": false }
     ]
   },
   {
@@ -51,7 +52,7 @@ const char* gaugesJson = R"====([
     "minVal": 10.0, "maxVal": 20.0,
     "unitLabel": "AFR",
     "secondaries": [
-      { "sourceId": "lambda", "prefix": "Lambda: ", "suffix": "", "posY": 144, "dynamicColor": false }
+      { "sourceId": "lambda", "prefix": "Lambda: ", "suffix": "", "rangeColors": false }
     ]
   },
   {
@@ -61,12 +62,13 @@ const char* gaugesJson = R"====([
     "minVal": -10.0, "maxVal": 40.0,
     "unitLabel": "IGN DEG",
     "secondaries": [
-      { "sourceId": "rpm", "prefix": "RPM: ", "suffix": "", "posY": 144, "dynamicColor": false }
+      { "sourceId": "rpm", "prefix": "RPM: ", "suffix": "", "rangeColors": false }
     ]
   },
   {
     "type": "shiftlight",
     "name": "Gauge 5: Shift Lights",
+    "shiftTargets": [6500, 6300, 6100, 6000, 5800, 0],
     "secondaries": [
       { "sourceId": "rpm" },
       { "sourceId": "speed" }
@@ -156,6 +158,13 @@ void loadConfigFromJson() {
     gc.maxVal = g["maxVal"] | 100.0f;
     strlcpy(gc.unitLabel, g["unitLabel"] | "", sizeof(gc.unitLabel));
     gc.boostUnits = g["boostUnits"] | false;
+
+    if (gc.type == GAUGE_TYPE_SHIFTLIGHT) {
+      JsonArray targets = g["shiftTargets"];
+      for (uint8_t gear = 1; gear <= 6 && gear <= targets.size(); gear++) {
+        setShiftTargetRpm(gear, targets[gear - 1] | 0);
+      }
+    }
     
     gc.secondaryCount = 0;
     JsonArray secs = g["secondaries"];
@@ -165,8 +174,12 @@ void loadConfigFromJson() {
       strlcpy(sm.sourceId, s["sourceId"] | "", sizeof(sm.sourceId));
       strlcpy(sm.prefix, s["prefix"] | "", sizeof(sm.prefix));
       strlcpy(sm.suffix, s["suffix"] | "", sizeof(sm.suffix));
-      sm.posY = s["posY"] | 0;
-      sm.dynamicColor = s["dynamicColor"] | false;
+      sm.rangeColors = s["rangeColors"] | false;
+      sm.lowerThreshold = s["lowerThreshold"] | 0.0f;
+      sm.upperThreshold = s["upperThreshold"] | 100.0f;
+      strlcpy(sm.colorBelow, s["colorBelow"] | "blue", sizeof(sm.colorBelow));
+      strlcpy(sm.colorBetween, s["colorBetween"] | "cyan", sizeof(sm.colorBetween));
+      strlcpy(sm.colorAbove, s["colorAbove"] | "red", sizeof(sm.colorAbove));
       gc.secondaryCount++;
     }
     

@@ -1,6 +1,6 @@
-# 32GAUGE
+# OpenGauge
 
-32GAUGE is an ESP32-S3 vehicle display. It reads OBD-II data over CAN, reads
+OpenGauge is an ESP32-S3 vehicle display. It reads OBD-II data over CAN, reads
 supported analogue sensors, and shows live information on a 240 x 240 round
 LCD. Touch gestures change the active gauge screen.
 
@@ -70,7 +70,7 @@ The preview tool runs the production gauge renderer with desktop stubs. It
 does not require the Arduino or ESP32 toolchain.
 
 ```powershell
-python tools/gauge_preview.py --type standard --main-source boostPress --min -10 --max 25 --unit "Boost (PSI)" --boost-units --value boostPress=12.4 --value waterTemp=92 --value intakeTemp=31 --secondary "waterTemp,Water: ,C,180,dynamic" --secondary "intakeTemp,AIT: ,C,208" -o preview.png --scale 3
+python tools/gauge_preview.py --type standard --main-source boostPress --min -10 --max 25 --unit "Boost (PSI)" --boost-units --value boostPress=12.4 --value waterTemp=92 --value intakeTemp=31 --secondary "waterTemp,Water: ,C,range,80,105,blue,cyan,red" --secondary "intakeTemp,AIT: ,C" -o preview.png --scale 3
 ```
 
 See [Preview tool](tools/README.md) for all options. The checked-in examples
