@@ -1,5 +1,8 @@
 # CAD files
 
+The original hardware design material in this directory is licensed under
+CERN-OHL-S-2.0. See [`../LICENSE`](../LICENSE) for the licence scope.
+
 ## PCB
 
 Open `PCB/daughter-board.kicad_pro` in KiCad. The project includes the
@@ -28,4 +31,3 @@ The `Case` directory contains editable interchange and print files:
 | `OpenGauge.step` | Complete mechanical model |
 | `mainBody.3mf` | Main enclosure print |
 | `frontRing.3mf` | Front retaining ring print |
-

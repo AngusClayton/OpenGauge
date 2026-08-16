@@ -135,7 +135,7 @@ are in [previews](previews).
 | `previews/` | Example screen renders. |
 | `docs/` | Hardware and configuration documentation. |
 | `cad/` | KiCad PCB files, fabrication outputs, and enclosure models. |
-| `test/` | Firmware tests. |
+| `.github/workflows/` | Automated firmware, WASM, parser, and filesystem checks. |
 
 ## Contribute
 
@@ -144,5 +144,13 @@ Small, focused changes are easiest to review. Read
 
 ## License
 
-No licence has been selected for this repository yet. Do not reuse or
-redistribute the project until a licence is added.
+OpenGauge uses strong reciprocal licences:
+
+- Original software is licensed under GPL-3.0-or-later. Distributed software
+  modifications must remain available under the same licence.
+- Original hardware design material is licensed under CERN-OHL-S-2.0.
+  Distributed modified designs and products must meet its source obligations.
+
+See [LICENSE](LICENSE) for the precise scope, the complete texts in
+[LICENSES](LICENSES), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for
+components that retain separate notices.

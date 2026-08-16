@@ -1,0 +1,15 @@
+OpenGauge uses separate licences for software and hardware.
+
+Original software in this repository is licensed under the GNU General Public
+License, version 3 or any later version (GPL-3.0-or-later). This scope includes
+the firmware, web configurator, renderer, preview tools, build files, and
+software documentation. See `LICENSES/GPL-3.0-or-later.txt`.
+
+Original hardware design material is licensed under the CERN Open Hardware
+Licence Version 2 - Strongly Reciprocal (CERN-OHL-S-2.0). This scope includes
+`cad/`, `docs/HARDWARE.md`, and `docs/BOM.md`. See
+`LICENSES/CERN-OHL-S-2.0.txt`.
+
+Files that contain a separate copyright or licence notice remain under that
+notice. External dependencies remain under their respective licences. See
+`THIRD_PARTY_NOTICES.md`.

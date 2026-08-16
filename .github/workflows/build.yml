@@ -1,5 +1,12 @@
 name: Build OpenGauge
 
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
   pull_request:
@@ -21,6 +28,8 @@ jobs:
           actions-cache-folder: emsdk-cache
       - run: bash tools/wasm/build_wasm.sh
       - run: node tools/wasm/smoke_test.mjs
+      - run: node --check tools/configurator/web/app.js
+      - run: python -m py_compile tools/gauge_preview.py tools/configurator/server.py tools/configurator/config_model.py
       - run: >-
           g++ -std=c++17 -O2 -o /tmp/config_codec_test
           src/ConfigCodec.cpp tools/host/config_codec_test.cpp
@@ -31,6 +40,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: opengauge-firmware
+          retention-days: 14
           path: |
             .pio/build/waveshare_esp32s3_touch_lcd_128/firmware.bin
             .pio/build/waveshare_esp32s3_touch_lcd_128/littlefs.bin
