@@ -60,9 +60,14 @@ sets the elapsed test time after the simulated launch.
 
 ## Add a new gauge type
 
-Add the production renderer in `src/GaugeRenderer.cpp`. Then add one host
-dispatch branch in `tools/host/preview_main.cpp` and any required simulated
-inputs. Do not duplicate drawing code in Python.
+Add the production renderer in `src/GaugeRenderer.cpp`. Add host dispatch and
+simulated inputs in `tools/host/preview_main.cpp`. Add browser dispatch and
+simulated state in `tools/wasm/renderer_wasm.cpp`. Do not duplicate drawing
+code in Python, JavaScript, or the WASM wrapper.
+
+A new JSON gauge type also needs configuration parser, web editor, Python mock
+validator, documentation, and test updates. Use the complete checklist in
+[CONTRIBUTING.md](../CONTRIBUTING.md#add-a-gauge-type).
 
 ## Configuration portal
 

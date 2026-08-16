@@ -26,10 +26,10 @@ gauge layouts to their own vehicle.
 
 ## Hardware status
 
-The firmware targets a Waveshare ESP32-S3 1.28-inch touch LCD configuration.
-The repository does not yet include PCB files, a bill of materials, wiring
-drawings, or installation instructions. See [Hardware](docs/HARDWARE.md) for
-the current interface notes and planned hardware documentation.
+The firmware targets a Waveshare ESP32-S3 1.28-inch touch LCD. The repository
+includes KiCad daughter-board files, fabrication outputs, enclosure models,
+connector pinouts, and a prototype bill of materials. See
+[Hardware](docs/HARDWARE.md), [BOM](docs/BOM.md), and [CAD files](cad/README.md).
 
 ## Quick start with VS Code
 
@@ -134,6 +134,7 @@ are in [previews](previews).
 | `tools/` | Native renderer and PNG preview tool. |
 | `previews/` | Example screen renders. |
 | `docs/` | Hardware and configuration documentation. |
+| `cad/` | KiCad PCB files, fabrication outputs, and enclosure models. |
 | `test/` | Firmware tests. |
 
 ## Contribute
