@@ -20,6 +20,12 @@ static uint32_t gStatusIssueSinceMs = 0;
 static int gLastDetectedGear = 0;
 static uint32_t gLastDetectedGearMs = 0;
 
+class ScopedConfigLock {
+ public:
+  ScopedConfigLock() { lockConfig(); }
+  ~ScopedConfigLock() { unlockConfig(); }
+};
+
 struct ShiftGearConfig {
   uint8_t gearNumber;
   float rpmPerKph;
@@ -447,10 +453,17 @@ static volatile AccelerationTimerState gAccelerationTimerState = ACCEL_TIMER_ARM
 static volatile uint32_t gAccelerationTimerStartMs = 0;
 static volatile uint32_t gAccelerationTimerElapsedMs = 0;
 
+void resetAccelerationTimer() {
+  gAccelerationTimerState = ACCEL_TIMER_ARMED;
+  gAccelerationTimerStartMs = 0;
+  gAccelerationTimerElapsedMs = 0;
+}
+
 /**
  * @brief Advance the 0-100 timer state from the high-frequency OBD task.
  */
 void updateAccelerationTimer() {
+  ScopedConfigLock guard;
   const size_t profileIndex = getCurrentGaugeProfileIndex();
   if (profileIndex >= activeGaugeCount || activeGauges[profileIndex].type != GAUGE_TYPE_ACCEL_TIMER) {
     return;
@@ -700,6 +713,7 @@ void renderGenericGauge(const GaugeConfig& config) {
  * Translates the active JSON profile type to its respective drawing layout.
  */
 void renderDisplay() {
+  ScopedConfigLock guard;
   size_t idx = getCurrentGaugeProfileIndex();
   if (idx >= activeGaugeCount) {
     Paint_Clear(BLACK);
@@ -726,4 +740,23 @@ void renderDisplay() {
       LCD_1IN28_Display(BlackImage);
       return;
   }
+}
+
+void renderConfigPortalScreen(bool portalActive, const char* ssid, const char* password) {
+  Paint_Clear(BLACK);
+  drawCenteredTextFixed(22, "SETTINGS", &Font_nokia_16, WHITE, BLACK);
+  if (portalActive) {
+    drawCenteredTextFixed(58, "CONFIG WI-FI ACTIVE", &Font_nokia_8, GBLUE, BLACK);
+    drawCenteredTextFixed(80, ssid, &Font_nokia_12, WHITE, BLACK);
+    drawCenteredTextFixed(108, password, &Font_nokia_12, YELLOW, BLACK);
+    drawCenteredTextFixed(134, "192.168.4.1", &Font_nokia_12, GRAY, BLACK);
+    Paint_DrawRectangle(34, 164, 206, 207, RED, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
+    drawCenteredTextFixed(178, "STOP HOTSPOT", &Font_nokia_12, RED, BLACK);
+  } else {
+    drawCenteredTextFixed(68, "CONFIGURATION", &Font_nokia_12, GRAY, BLACK);
+    Paint_DrawRectangle(28, 92, 212, 146, GBLUE, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
+    drawCenteredTextFixed(110, "START HOTSPOT", &Font_nokia_12, GBLUE, BLACK);
+    drawCenteredTextFixed(174, "SWIPE DOWN TO EXIT", &Font_nokia_8, GRAY, BLACK);
+  }
+  LCD_1IN28_Display(BlackImage);
 }

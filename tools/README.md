@@ -64,8 +64,8 @@ Add the production renderer in `src/GaugeRenderer.cpp`. Then add one host
 dispatch branch in `tools/host/preview_main.cpp` and any required simulated
 inputs. Do not duplicate drawing code in Python.
 
-## Configuration portal prototype
+## Configuration portal
 
 Run `python tools/configurator/server.py` to start the local visual editor.
-See [Configurator prototype](configurator/README.md). It uses the native
-renderer for its PNG previews and does not modify ESP32 firmware behaviour.
+See [Configuration portal](configurator/README.md). On-device previews use the
+WASM build of the native renderer; the Python server retains PNG fallback.

@@ -35,13 +35,15 @@ def validate(config: object) -> list[str]:
         else: ids.add(identifier)
         if source.get('type') not in {'obd','analog'}: errors.append(f'{label}.type must be obd or analog.')
         if source.get('type') == 'obd' and not isinstance(source.get('pid'), int): errors.append(f'{label}.pid must be an integer.')
-        if source.get('type') == 'analog' and not isinstance(source.get('pin'), int): errors.append(f'{label}.pin must be an integer.')
+        if source.get('type') == 'analog' and (not isinstance(source.get('pin'), int) or not isinstance(source.get('multiplier'), (int,float)) or not isinstance(source.get('offset'), (int,float))): errors.append(f'{label} needs numeric pin, multiplier, and offset fields.')
     for index, gauge in enumerate(gauges):
         label=f'gauges[{index}]'
         if not isinstance(gauge, dict): errors.append(f'{label} must be an object.'); continue
         kind=gauge.get('type')
         if kind not in GAUGE_TYPES: errors.append(f'{label}.type is not supported.'); continue
         if not isinstance(gauge.get('name'), str) or not gauge['name']: errors.append(f'{label}.name is required.')
+        elif len(gauge['name']) > 31: errors.append(f'{label}.name must be at most 31 characters.')
+        if len(str(gauge.get('unitLabel',''))) > 15: errors.append(f'{label}.unitLabel must be at most 15 characters.')
         if kind == 'standard':
             main=gauge.get('mainSourceId')
             if main not in ids: errors.append(f'{label}.mainSourceId must reference a data source.')
@@ -51,6 +53,7 @@ def validate(config: object) -> list[str]:
             else:
                 for secondary in secondaries:
                     if not isinstance(secondary, dict) or secondary.get('sourceId') not in ids: errors.append(f'{label} has a secondary with an unknown source.'); continue
+                    if len(str(secondary.get('prefix',''))) > 15 or len(str(secondary.get('suffix',''))) > 7: errors.append(f'{label} secondary labels must be at most 15 characters and units at most 7.')
                     if secondary.get('rangeColors', False):
                         low, high = secondary.get('lowerThreshold', 0), secondary.get('upperThreshold', 100)
                         if not isinstance(low, (int,float)) or not isinstance(high, (int,float)) or low >= high: errors.append(f'{label} secondary colour thresholds must have lowerThreshold lower than upperThreshold.')

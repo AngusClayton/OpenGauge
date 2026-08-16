@@ -13,6 +13,8 @@
 #include "Sensors.h"
 #include "GaugeRenderer.h"
 #include "ConfigManager.h"
+#include "ConfigStorage.h"
+#include "ConfigPortal.h"
 
 // External display memory variables allocated by the Waveshare board initialization drivers
 extern UWORD *BlackImage;
@@ -25,6 +27,7 @@ TaskHandle_t obdTaskHandle = NULL;
 TaskHandle_t displayTaskHandle = NULL;
 
 static uint32_t gLastSwipeMs = 0; // Debounce tracking timestamp for touch swipe gestures
+static bool gSettingsOpen = false;
 
 /**
  * @brief Continuous background FreeRTOS task handling CAN bus communications.
@@ -117,12 +120,23 @@ void displayTask(void *pvParameters) {
   while (1) {
     // Process swipe gestures
     if (touch.available()) {
+      if (isConfigPortalActive()) noteConfigPortalActivity();
       const uint32_t now = millis();
       if ((now - gLastSwipeMs) > 250) {
-        if (touch.data.gestureID == SWIPE_LEFT) {
+        if (gSettingsOpen && touch.data.gestureID == SWIPE_DOWN) {
+          gSettingsOpen = false;
+          gLastSwipeMs = now;
+        } else if (gSettingsOpen && (touch.data.gestureID == SINGLE_CLICK || touch.data.gestureID == DOUBLE_CLICK)) {
+          if (!isConfigPortalActive() && touch.data.y >= 82 && touch.data.y <= 156) startConfigPortal();
+          else if (isConfigPortalActive() && touch.data.y >= 154) stopConfigPortal();
+          gLastSwipeMs = now;
+        } else if (!gSettingsOpen && touch.data.gestureID == SWIPE_UP) {
+          gSettingsOpen = true;
+          gLastSwipeMs = now;
+        } else if (!gSettingsOpen && touch.data.gestureID == SWIPE_LEFT) {
           nextGaugeProfile();
           gLastSwipeMs = now;
-        } else if (touch.data.gestureID == SWIPE_RIGHT) {
+        } else if (!gSettingsOpen && touch.data.gestureID == SWIPE_RIGHT) {
           prevGaugeProfile();
           gLastSwipeMs = now;
         }
@@ -130,7 +144,8 @@ void displayTask(void *pvParameters) {
     }
 
     updateImuSensors(); // Reads IMU via I2C bus
-    renderDisplay();
+    if (gSettingsOpen) renderConfigPortalScreen(isConfigPortalActive(), getConfigPortalSsid(), getConfigPortalPassword());
+    else renderDisplay();
 
     // Monitor thread stability by periodically printing FreeRTOS stack high watermarks
     loopCount++;
@@ -153,7 +168,7 @@ void displayTask(void *pvParameters) {
 void setup() {
   Serial.begin(115200);
   delay(100);
-  Serial.println("\n\n===== 32 GAUGE INITIALIZATION =====");
+  Serial.println("\n\n===== OPENGAUGE INITIALIZATION =====");
 
   // Initialize OBD/CAN
   setupOBD();
@@ -162,8 +177,13 @@ void setup() {
   // Seed defaults
   initPidScheduleDefaults();
 
-  // Load layout configurations from embedded JSON blocks
-  loadConfigFromJson();
+  // Load the last valid on-device configuration, with embedded defaults as fallback.
+  char configError[160] = {};
+  initConfigStorage();
+  if (!loadPersistedConfig(configError, sizeof(configError))) {
+    if (configError[0]) Serial.printf("[CONFIG] Stored configuration unavailable: %s\n", configError);
+    loadConfigFromJson();
+  }
 
   // Setup raw analog pins
   initAnalogInputs();

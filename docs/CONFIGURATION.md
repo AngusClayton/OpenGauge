@@ -1,12 +1,13 @@
 # Configuration
 
-The current configuration is embedded JSON in
-[`src/ConfigManager.cpp`](../src/ConfigManager.cpp). The firmware loads it at
-startup. Edit the JSON, build the firmware, and upload it to apply a change.
+The firmware stores the active versioned JSON document in LittleFS. Portal
+changes are validated and applied live. At startup, the firmware tries the
+current file, its backup, and finally the embedded defaults, so an interrupted
+or invalid update remains recoverable.
 
 ## Data sources
 
-`varsJson` defines each value that a gauge can use.
+`dataSources` defines each value that a gauge can use.
 
 | Field | Use |
 | --- | --- |
@@ -42,7 +43,7 @@ before you connect a sensor.
 
 ## Gauge profiles
 
-`gaugesJson` defines the screens. A gauge profile uses one of these types:
+`gauges` defines the ordered screens. A gauge profile uses one of these types:
 
 | Type | Use |
 | --- | --- |

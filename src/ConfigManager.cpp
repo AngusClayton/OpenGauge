@@ -3,13 +3,26 @@
 #include <Arduino.h>
 #include "obd/pid_schedule.h"
 #include "GaugeRenderer.h"
+#include "ConfigCodec.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 DataSourceConfig activeDataSources[MAX_DATA_SOURCES];
 size_t activeDataSourceCount = 0;
 
 GaugeConfig activeGauges[MAX_GAUGES];
 size_t activeGaugeCount = 0;
+static String gCurrentConfigJson;
+static SemaphoreHandle_t gConfigMutex = nullptr;
+static size_t gCurrentGaugeProfileIndex = 0;
 
+class ConfigGuard {
+ public:
+  ConfigGuard() { lockConfig(); }
+  ~ConfigGuard() { unlockConfig(); }
+};
+
+#if 0  // Historical split-array configuration retained temporarily for reference.
 const char* varsJson = R"====([
   { "id": "waterTemp", "type": "obd", "pid": 5, "formula": 2 },
   { "id": "intakeTemp", "type": "obd", "pid": 15, "formula": 2 },
@@ -99,7 +112,7 @@ const char* gaugesJson = R"====([
  * efficient C-structs in RAM. Once populated, these structs are referenced in 
  * real-time during the display loop, removing the need for runtime JSON parsing.
  */
-void loadConfigFromJson() {
+static void loadEmbeddedLegacyConfig() {
   // Parse Variables
   JsonDocument docVars;
   DeserializationError err1 = deserializeJson(docVars, varsJson);
@@ -192,6 +205,43 @@ void loadConfigFromJson() {
       applyGaugeProfile(0);
   }
 }
+#endif
+
+void lockConfig() {
+  if (!gConfigMutex) gConfigMutex = xSemaphoreCreateRecursiveMutex();
+  if (gConfigMutex) xSemaphoreTakeRecursive(gConfigMutex, portMAX_DELAY);
+}
+
+void unlockConfig() {
+  if (gConfigMutex) xSemaphoreGiveRecursive(gConfigMutex);
+}
+
+bool applyConfigJson(const char* json, size_t length, char* error, size_t errorSize) {
+  ParsedOpenGaugeConfig parsed{};
+  if (!parseOpenGaugeConfig(json, length, parsed, error, errorSize)) return false;
+
+  lockConfig();
+  memcpy(activeDataSources, parsed.dataSources, sizeof(activeDataSources));
+  activeDataSourceCount = parsed.dataSourceCount;
+  memcpy(activeGauges, parsed.gauges, sizeof(activeGauges));
+  activeGaugeCount = parsed.gaugeCount;
+  resetAccelerationTimer();
+  gCurrentConfigJson = String(json).substring(0, length);
+  if (activeGaugeCount) applyGaugeProfile(gCurrentGaugeProfileIndex < activeGaugeCount ? gCurrentGaugeProfileIndex : 0);
+  unlockConfig();
+  return true;
+}
+
+const char* getCurrentConfigJson() { return gCurrentConfigJson.c_str(); }
+size_t getCurrentConfigJsonLength() { return gCurrentConfigJson.length(); }
+
+void loadConfigFromJson() {
+  const char* defaults = getDefaultOpenGaugeConfigJson();
+  char error[160];
+  if (!applyConfigJson(defaults, strlen(defaults), error, sizeof(error))) {
+    Serial.printf("[CONFIG] Default configuration failed: %s\n", error);
+  }
+}
 
 #include "Sensors.h"
 #include "obd/pid_config.h"
@@ -207,6 +257,7 @@ void loadConfigFromJson() {
  * @return float Calibrated value of the requested metric.
  */
 float getValueForSource(const char* sourceId) {
+    ConfigGuard guard;
     for (size_t i = 0; i < activeDataSourceCount; i++) {
         if (strcmp(activeDataSources[i].id, sourceId) == 0) {
             const DataSourceConfig& ds = activeDataSources[i];
@@ -251,6 +302,7 @@ float getValueForSource(const char* sourceId) {
 }
 
 void updateAnalogSources() {
+    ConfigGuard guard;
     for (size_t i = 0; i < activeDataSourceCount; i++) {
         if (activeDataSources[i].type == SOURCE_ANALOG) {
             int raw = analogRead(activeDataSources[i].pin);
@@ -264,18 +316,18 @@ void updateAnalogSources() {
     }
 }
 
-static size_t gCurrentGaugeProfileIndex = 0;
-
 /**
  * @brief Gets the zero-based index of the currently active gauge profile.
  * 
  * @return size_t Current active gauge index.
  */
 size_t getCurrentGaugeProfileIndex() {
+  ConfigGuard guard;
   return gCurrentGaugeProfileIndex;
 }
 
 bool isAccelerationTimerProfileActive() {
+  ConfigGuard guard;
   return gCurrentGaugeProfileIndex < activeGaugeCount &&
          activeGauges[gCurrentGaugeProfileIndex].type == GAUGE_TYPE_ACCEL_TIMER;
 }
@@ -292,12 +344,16 @@ bool isAccelerationTimerProfileActive() {
  * @param index Zero-based profile index to switch to.
  */
 void applyGaugeProfile(size_t index) {
+  ConfigGuard guard;
   if (index >= activeGaugeCount) {
     return;
   }
   
   gCurrentGaugeProfileIndex = index;
   const GaugeConfig& gc = activeGauges[index];
+  if (gc.type == GAUGE_TYPE_SHIFTLIGHT) {
+    for (uint8_t gear = 1; gear <= 6; ++gear) setShiftTargetRpm(gear, gc.shiftTargets[gear - 1]);
+  }
   
   uint8_t pids[MAX_DATA_SOURCES];
   size_t pidCount = 0;
@@ -355,6 +411,7 @@ void applyGaugeProfile(size_t index) {
  * @brief Cycle to the next sequential gauge profile.
  */
 void nextGaugeProfile() {
+  ConfigGuard guard;
   if (activeGaugeCount == 0) return;
   const size_t next = (gCurrentGaugeProfileIndex + 1) % activeGaugeCount;
   applyGaugeProfile(next);
@@ -364,6 +421,7 @@ void nextGaugeProfile() {
  * @brief Cycle to the previous sequential gauge profile.
  */
 void prevGaugeProfile() {
+  ConfigGuard guard;
   if (activeGaugeCount == 0) return;
   const size_t prev = (gCurrentGaugeProfileIndex + activeGaugeCount - 1) % activeGaugeCount;
   applyGaugeProfile(prev);

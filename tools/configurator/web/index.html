@@ -7,12 +7,13 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header><h1><span class="wordmark">OpenGauge</span> <span class="page-title">Configurator</span></h1><p>Local prototype. Preview images use the production C++ renderer.</p></header>
+  <header><h1><span class="wordmark">OpenGauge</span> <span class="page-title">Configurator</span></h1><p>Configure, preview, and apply gauge screens.</p></header>
   <main>
     <section class="toolbar">
-      <button id="save">Save local config</button><button id="download">Download JSON</button>
+      <button id="save">Save &amp; apply</button><button id="download">Download JSON</button>
       <label class="upload">Upload JSON<input id="upload" type="file" accept="application/json"></label>
       <button id="restore">Restore default</button>
+      <button id="stop-portal" hidden>Exit hotspot</button>
     </section>
     <p id="message" role="status"></p>
     <section id="editor-view">
@@ -31,7 +32,7 @@
         <div class="accordion-content"><textarea id="raw" spellcheck="false"></textarea><button id="apply-raw">Apply JSON</button></div>
       </details>
     </section>
-    <section class="preview"><h2>Exact preview</h2><label>Gauge <select id="preview-gauge"></select></label><div id="samples"></div><button id="render">Render PNG</button><p>Grey marks pixels outside the physical round LCD.</p><img id="preview-image" alt="Gauge preview"></section>
+    <section class="preview"><h2>Exact preview</h2><label>Gauge <select id="preview-gauge"></select></label><div id="samples"></div><button id="render">Render preview</button><p>Rendered by the production C++ code. Grey marks pixels outside the physical round LCD.</p><canvas id="preview-canvas" width="240" height="240" aria-label="Gauge preview"></canvas><img id="preview-image" alt="Gauge preview" hidden></section>
   </main>
   <script src="app.js"></script>
 </body>

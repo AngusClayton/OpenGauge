@@ -1,0 +1,38 @@
+name: Build OpenGauge
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  firmware-and-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install platformio
+      - run: pio run
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.74
+          actions-cache-folder: emsdk-cache
+      - run: bash tools/wasm/build_wasm.sh
+      - run: node tools/wasm/smoke_test.mjs
+      - run: >-
+          g++ -std=c++17 -O2 -o /tmp/config_codec_test
+          src/ConfigCodec.cpp tools/host/config_codec_test.cpp
+          -Iinclude -Isrc
+          -I.pio/libdeps/waveshare_esp32s3_touch_lcd_128/ArduinoJson/src
+          && /tmp/config_codec_test
+      - run: pio run --target buildfs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opengauge-firmware
+          path: |
+            .pio/build/waveshare_esp32s3_touch_lcd_128/firmware.bin
+            .pio/build/waveshare_esp32s3_touch_lcd_128/littlefs.bin
+            tools/configurator/web/opengauge-renderer.js
+            tools/configurator/web/opengauge-renderer.wasm

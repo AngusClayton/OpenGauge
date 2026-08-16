@@ -43,7 +43,7 @@ label { display:inline-flex; flex:1 1 145px; flex-direction:column; gap:.25rem; 
 .raw-json { margin-top:1rem; }
 textarea { box-sizing:border-box; min-height:480px; width:100%; font-family:ui-monospace,monospace; }
 #message.error { color:#ff8f8f; white-space:pre-line; } #message.ok { color:#6ee7a1; }
-.preview img { background:#666; display:block; image-rendering:pixelated; margin-top:1rem; max-width:720px; width:100%; }
+.preview img,.preview canvas { background:#666; display:block; image-rendering:pixelated; margin-top:1rem; max-width:720px; width:100%; }
 .preview { margin-top:1rem; } .small { font-size:.85rem; color:#aebdca; }
 @media (max-width:800px) { .columns { grid-template-columns:1fr; } }
 @media (max-width:600px) {
@@ -53,5 +53,5 @@ textarea { box-sizing:border-box; min-height:480px; width:100%; font-family:ui-m
   .toolbar button,.toolbar .upload { margin:0; width:100%; }
   .row { align-items:stretch; } .row > label { flex-basis:100%; margin:.15rem 0; }
   .row > button { flex:1 1 30%; margin:.15rem 0; } .secondary { padding-left:.35rem; }
-  textarea { min-height:55vh; font-size:16px; } .preview img { width:100%; }
+  textarea { min-height:55vh; font-size:16px; } .preview img,.preview canvas { width:100%; }
 }

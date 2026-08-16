@@ -21,7 +21,8 @@ gauge layouts to their own vehicle.
 - A G-meter with a five-second dot trail and signed peak readings.
 - Analogue sensor inputs with linear calibration.
 - Swipe navigation on the integrated touch display.
-- Native PNG previews that run the production C++ renderer on a desktop.
+- Native and browser-WASM previews that run the production C++ renderer.
+- A temporary WPA2 configuration hotspot with live save and apply.
 
 ## Hardware status
 
@@ -59,10 +60,11 @@ ground, CAN wiring, and sensor calibration.
 
 ## Configure a gauge
 
-The current data-source and gauge-profile JSON is embedded in
-[`src/ConfigManager.cpp`](src/ConfigManager.cpp). Update it, then rebuild and
-upload the firmware. See [Configuration](docs/CONFIGURATION.md) for the field
-reference and examples.
+Swipe up on the gauge and start its temporary configuration hotspot. The gauge
+shows the device-specific Wi-Fi name and password. The captive portal can edit,
+preview, upload, download, save, and apply the versioned JSON without rebooting.
+See [Configuration](docs/CONFIGURATION.md) and the
+[configuration portal](tools/configurator/README.md).
 
 ## Preview screens without an ESP32 build
 

@@ -41,6 +41,8 @@ static GForcePeak peaks[kGforcePeakBufferSize]{};
 uint32_t millis() { return fakeMillis; }
 float getValueForSource(const char* id) { auto i=values.find(id); return i==values.end()?0.0f:i->second; }
 size_t getCurrentGaugeProfileIndex() { return 0; }
+void lockConfig() {}
+void unlockConfig() {}
 OBDLinkStatus getOBDLinkStatus() { return OBD_STATUS_READY; }
 const char* getOBDStatusText() { return "READY"; }
 bool isImuReady() { return imuReady; }
