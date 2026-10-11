@@ -21,8 +21,8 @@ for the VS Code and command-line procedures.
 | `pid` | OBD-II PID number for an `obd` source. |
 | `formula` | OBD conversion formula index. |
 | `pin` | ESP32 GPIO number for an `analog` source. |
-| `multiplier` | Analogue calibration slope. |
-| `offset` | Analogue calibration offset. |
+| `multiplier` | Multiply the decoded OBD value or analogue voltage by this number. |
+| `offset` | Add this number after multiplication. |
 
 Example OBD temperature source:
 
@@ -35,6 +35,44 @@ Example analogue pressure source:
 ```json
 { "id": "boostPress", "type": "analog", "pin": 18, "multiplier": 30.7692, "offset": -28.2692 }
 ```
+
+OBD sources have independent conversions, even when they use the same PID.
+The bus polls each PID once per schedule cycle. Each source applies its own
+formula, multiplier, and offset to the cached response bytes A and B.
+
+| Formula | Decoded value before multiplier and offset |
+| --- | --- |
+| 0 or 6 | A |
+| 1 or 7 | A * 256 + B |
+| 2 | A - 40 |
+| 3 | (A * 256 + B) / 4 |
+| 4 | (A * 256 + B) / 100 |
+| 5 | A / 2.55 |
+
+Use separate source IDs for different calculations:
+
+```json
+{"id":"maf","type":"obd","pid":16,"formula":4,"multiplier":1,"offset":0}
+{"id":"hp","type":"obd","pid":16,"formula":4,"multiplier":1.25,"offset":0}
+{"id":"lambda","type":"obd","pid":52,"formula":7,"multiplier":0.000030517578125,"offset":0}
+{"id":"afr","type":"obd","pid":52,"formula":7,"multiplier":0.0004486083984375,"offset":0}
+```
+
+These are individual source objects. Add them to the `dataSources` array.
+Set the HP screen main source to `hp` and its secondary source to `maf`.
+The default HP estimate is MAF in g/s multiplied by 1.25; it is an estimate,
+not a measured engine output. Adjust the factor for your application.
+The default AFR conversion uses gasoline stoichiometry of 14.7.
+
+Saved configurations are retained during firmware updates. For an existing
+HP screen, add the `hp` source and change its main source from `maf` to `hp`.
+Add explicit multiplier and offset fields to existing AFR/lambda sources.
+For old version-1 sources without these fields, PID 52/formula 7 keeps the
+lambda conversion (or gasoline AFR for ID `afr`), and PID 14/formula 6 keeps
+A / 2 - 64. Other OBD sources default to multiplier 1 and offset 0.
+Explicit settings allow any source ID, without name-dependent conversion.
+Preview sample values are final display values per source ID; previews do
+not simulate raw OBD responses.
 
 The analogue conversion is:
 
@@ -59,6 +97,17 @@ before you connect a sensor.
 
 Shift-light profiles use `shiftTargets`, an array containing the target RPM for
 gears 1 through 6. Use `0` when a gear has no shift target.
+
+G-meter profiles use `maxG` for the outer ring scale, from 0.1 to 16 g.
+The default is 1.5 g. The inner ring shows half this value. Both the live dot
+and the trail use the same scale. Values beyond the outer ring stay on its
+edge and keep their direction. Peak numbers show the measured values even
+when they exceed the scale. This setting changes the display, not the IMU
+measurement range. For example:
+
+```json
+{"type":"gmeter","name":"G Meter","maxG":2.0}
+```
 
 Standard-gauge fields:
 

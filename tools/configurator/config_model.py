@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -35,12 +36,23 @@ def validate(config: object) -> list[str]:
         else: ids.add(identifier)
         if source.get('type') not in {'obd','analog'}: errors.append(f'{label}.type must be obd or analog.')
         if source.get('type') == 'obd' and not isinstance(source.get('pid'), int): errors.append(f'{label}.pid must be an integer.')
+        if source.get('type') == 'obd':
+            for field, upper in (('pid',255), ('formula',7)):
+                value = source.get(field)
+                if type(value) is not int or not 0 <= value <= upper: errors.append(f'{label}.{field} must be an integer from 0 to {upper}.')
+            for field in ('multiplier','offset'):
+                value = source.get(field, 1 if field == 'multiplier' else 0)
+                if type(value) not in (int,float) or not math.isfinite(value): errors.append(f'{label}.{field} must be a finite number.')
         if source.get('type') == 'analog' and (not isinstance(source.get('pin'), int) or not isinstance(source.get('multiplier'), (int,float)) or not isinstance(source.get('offset'), (int,float))): errors.append(f'{label} needs numeric pin, multiplier, and offset fields.')
     for index, gauge in enumerate(gauges):
         label=f'gauges[{index}]'
         if not isinstance(gauge, dict): errors.append(f'{label} must be an object.'); continue
         kind=gauge.get('type')
         if kind not in GAUGE_TYPES: errors.append(f'{label}.type is not supported.'); continue
+        if kind == 'gmeter':
+            maximum = gauge.get('maxG', 1.5)
+            if type(maximum) not in (int,float) or not math.isfinite(maximum) or not 0.1 <= maximum <= 16:
+                errors.append(f'{label}.maxG must be a number from 0.1 to 16.')
         if not isinstance(gauge.get('name'), str) or not gauge['name']: errors.append(f'{label}.name is required.')
         elif len(gauge['name']) > 31: errors.append(f'{label}.name must be at most 31 characters.')
         if len(str(gauge.get('unitLabel',''))) > 15: errors.append(f'{label}.unitLabel must be at most 15 characters.')

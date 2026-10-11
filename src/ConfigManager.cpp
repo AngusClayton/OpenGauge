@@ -273,28 +273,7 @@ float getValueForSource(const char* sourceId) {
             const DataSourceConfig& ds = activeDataSources[i];
             
             if (ds.type == SOURCE_OBD) {
-                switch (ds.pid) {
-                    case PID_COOLANT_TEMP: return obdValues.coolant_temp_c;
-                    case PID_INTAKE_AIR_TEMP: return obdValues.intake_air_temp_c;
-                    case PID_ENGINE_RPM: return obdValues.rpm;
-                    case PID_VEHICLE_SPEED: return obdValues.vehicle_speed_kmh;
-                    case PID_ENGINE_LOAD: return obdValues.engine_load;
-                    case PID_FUEL_PRESSURE: return obdValues.fuel_pressure_bar;
-                    case PID_FUEL_LEVEL: return obdValues.fuel_level;
-                    case PID_INTAKE_PRESSURE: return obdValues.intake_pressure_kpa;
-                    case PID_IGNITION_TIMING: return obdValues.ignition_timing;
-                    case PID_MAF_AIRFLOW: return obdValues.maf_airflow;
-                    case PID_THROTTLE_POS: return obdValues.throttle_pos;
-                    case PID_O2_VOLTAGE: return obdValues.o2_voltage;
-                    case PID_O2_SENSOR1_LAMBDA: {
-                         if (strcmp(sourceId, "afr") == 0) {
-                             return obdValues.afr_gasoline;
-                         }
-                         return obdValues.lambda_ratio;
-                     }
-                    case PID_ETHANOL_FUEL: return obdValues.ethanol_percent;
-                    default: return 0.0f;
-                }
+                return evaluateObdSource(ds, static_cast<uint16_t>(getOBDRawValue(ds.pid, 2)));
             } else if (ds.type == SOURCE_ANALOG) {
                 float val = ds.cachedValue;
                 if (strcmp(sourceId, "boostPress") == 0) {

@@ -16,7 +16,7 @@
 
 void renderGenericGauge(const GaugeConfig& config);
 void renderShiftLightGauge();
-void renderGmeterGauge();
+void renderGmeterGauge(float maxG);
 void renderAccelerationTimerGauge();
 
 struct SampleValue { char id[16]; float value; };
@@ -83,7 +83,7 @@ EMSCRIPTEN_KEEPALIVE int og_render(const char* configJson, int configLength, int
   const GaugeConfig& gauge=activeGauges[currentGaugeIndex];
   if(gauge.type==GAUGE_TYPE_STANDARD) renderGenericGauge(gauge);
   else if(gauge.type==GAUGE_TYPE_SHIFTLIGHT) renderShiftLightGauge();
-  else if(gauge.type==GAUGE_TYPE_GMETER) renderGmeterGauge();
+  else if(gauge.type==GAUGE_TYPE_GMETER) renderGmeterGauge(gauge.maxG);
   else {
     const float finalSpeed=sample(gauge.mainSourceId,gauge.maxVal), elapsed=sample("timerMs",7420);
     resetAccelerationTimer();

@@ -14,6 +14,11 @@ const icons = {
 
 function syncRaw() { $('raw').value=JSON.stringify(config,null,2); refreshPreviewControls(); }
 function normalizeConfig() {
+  // Materialize legacy calibration before users rename or copy a source.
+  for(const source of config.dataSources||[]) if(source.type==='obd') {
+    source.multiplier ??= source.pid===52&&source.formula===7?(source.id==='afr'?14.7:1)/32768:source.pid===14&&source.formula===6?0.5:1;
+    source.offset ??= source.pid===14&&source.formula===6?-64:0;
+  }
   for(const gauge of config.gauges||[]) for(const secondary of gauge.secondaries||[]) {
     delete secondary.posY;
     if(secondary.rangeColors===undefined && secondary.dynamicColor!==undefined) secondary.rangeColors=!!secondary.dynamicColor;
@@ -47,7 +52,11 @@ function renderSources() {
   config.dataSources.forEach((source,index)=>{
     const el=card(`Source ${index+1}: ${source.id || 'Unnamed source'}`,{onDelete:()=>{if(config.dataSources.length<=1){message('The configuration needs at least one data source.',true);return;}if(sourceInUse(source.id)){message(`Remove references to ${source.id} before you delete it.`,true);return;}config.dataSources.splice(index,1);renderAll();}}), row=document.createElement('div'); row.className='row accordion-content';
     row.append(input('ID',source.id,v=>{source.id=v; renderAll();}), select('Type',source.type,['obd','analog'],v=>{source.type=v; renderAll();}));
-    if(source.type==='obd') row.append(input('PID',source.pid,v=>source.pid=v,'number'),input('Formula',source.formula,v=>source.formula=v,'number'));
+    if(source.type==='obd') {
+      const scale=source.pid===52&&source.formula===7?(source.id==='afr'?14.7:1)/32768:source.pid===14&&source.formula===6?0.5:1;
+      const offset=source.pid===14&&source.formula===6?-64:0;
+      row.append(input('PID',source.pid,v=>source.pid=v,'number'),input('Formula (0–7)',source.formula,v=>source.formula=v,'number'),input('Multiplier',source.multiplier??scale,v=>source.multiplier=v,'number'),input('Offset',source.offset??offset,v=>source.offset=v,'number'));
+    }
     else row.append(input('GPIO',source.pin,v=>source.pin=v,'number'),input('Multiplier',source.multiplier,v=>source.multiplier=v,'number'),input('Offset',source.offset,v=>source.offset=v,'number'));
     el.append(row); root.append(el);
   });
@@ -71,7 +80,7 @@ function renderGauges(openGaugeIndex=null) {
     if(gauge.type==='standard') { const group=document.createElement('fieldset'), legend=document.createElement('legend'), fields=document.createElement('div'); group.className='option-group'; legend.textContent='Main reading'; fields.className='row'; fields.append(select('Source',gauge.mainSourceId,config.dataSources.map(s=>s.id),v=>gauge.mainSourceId=v),input('Minimum',gauge.minVal,v=>gauge.minVal=v,'number'),input('Maximum',gauge.maxVal,v=>gauge.maxVal=v,'number'),input('Unit label',gauge.unitLabel,v=>gauge.unitLabel=v),checkboxField('Automatic boost/vacuum units','Show inHg below zero and PSI at or above zero. Leave off for normal gauges.',!!gauge.boostUnits,v=>gauge.boostUnits=v)); group.append(legend,fields); el.append(group); const heading=document.createElement('h4');heading.textContent='Secondary readings';el.append(heading); renderSecondaries(gauge,el,index); }
     if(gauge.type==='shiftlight') { const fields=document.createElement('div'); fields.className='row'; gauge.shiftTargets.forEach((value,gear)=>fields.append(input(`G${gear+1} RPM`,value,v=>gauge.shiftTargets[gear]=v,'number'))); el.append(fields); }
     if(gauge.type==='accelTimer') { const fields=document.createElement('div'); fields.className='row'; fields.append(select('Speed source',gauge.mainSourceId,config.dataSources.map(s=>s.id),v=>gauge.mainSourceId=v),input('Start speed',gauge.minVal,v=>gauge.minVal=v,'number'),input('Finish speed',gauge.maxVal,v=>gauge.maxVal=v,'number'),input('Unit',gauge.unitLabel,v=>gauge.unitLabel=v)); el.append(fields); }
-    if(gauge.type==='gmeter') { const note=document.createElement('p'); note.className='small'; note.textContent='This screen has no additional configurable fields.'; el.append(note); }
+    if(gauge.type==='gmeter') { row.append(input('Maximum G (outer ring)',gauge.maxG??1.5,v=>gauge.maxG=v,'number')); const note=document.createElement('p'); note.className='small'; note.textContent='Range: 0.1–16 g. The inner ring is half this value. Dot and trail use this scale; peaks show measured values.'; el.append(note); }
     root.append(el);
   });
 }
