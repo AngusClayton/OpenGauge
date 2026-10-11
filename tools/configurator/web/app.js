@@ -14,6 +14,11 @@ const icons = {
 
 function syncRaw() { $('raw').value=JSON.stringify(config,null,2); refreshPreviewControls(); }
 function normalizeConfig() {
+  // Materialize legacy calibration before users rename or copy a source.
+  for(const source of config.dataSources||[]) if(source.type==='obd') {
+    source.multiplier ??= source.pid===52&&source.formula===7?(source.id==='afr'?14.7:1)/32768:source.pid===14&&source.formula===6?0.5:1;
+    source.offset ??= source.pid===14&&source.formula===6?-64:0;
+  }
   for(const gauge of config.gauges||[]) for(const secondary of gauge.secondaries||[]) {
     delete secondary.posY;
     if(secondary.rangeColors===undefined && secondary.dynamicColor!==undefined) secondary.rangeColors=!!secondary.dynamicColor;
@@ -47,7 +52,11 @@ function renderSources() {
   config.dataSources.forEach((source,index)=>{
     const el=card(`Source ${index+1}: ${source.id || 'Unnamed source'}`,{onDelete:()=>{if(config.dataSources.length<=1){message('The configuration needs at least one data source.',true);return;}if(sourceInUse(source.id)){message(`Remove references to ${source.id} before you delete it.`,true);return;}config.dataSources.splice(index,1);renderAll();}}), row=document.createElement('div'); row.className='row accordion-content';
     row.append(input('ID',source.id,v=>{source.id=v; renderAll();}), select('Type',source.type,['obd','analog'],v=>{source.type=v; renderAll();}));
-    if(source.type==='obd') row.append(input('PID',source.pid,v=>source.pid=v,'number'),input('Formula',source.formula,v=>source.formula=v,'number'));
+    if(source.type==='obd') {
+      const scale=source.pid===52&&source.formula===7?(source.id==='afr'?14.7:1)/32768:source.pid===14&&source.formula===6?0.5:1;
+      const offset=source.pid===14&&source.formula===6?-64:0;
+      row.append(input('PID',source.pid,v=>source.pid=v,'number'),input('Formula (0–7)',source.formula,v=>source.formula=v,'number'),input('Multiplier',source.multiplier??scale,v=>source.multiplier=v,'number'),input('Offset',source.offset??offset,v=>source.offset=v,'number'));
+    }
     else row.append(input('GPIO',source.pin,v=>source.pin=v,'number'),input('Multiplier',source.multiplier,v=>source.multiplier=v,'number'),input('Offset',source.offset,v=>source.offset=v,'number'));
     el.append(row); root.append(el);
   });

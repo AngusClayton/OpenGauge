@@ -76,6 +76,15 @@ bool parseOpenGaugeConfig(const char* json, size_t length,
       target.type = SOURCE_OBD;
       if (!source["pid"].is<int>() || !source["formula"].is<int>()) { fail(error, errorSize, "OBD sources need integer pid and formula fields."); return false; }
       target.pid = source["pid"].as<uint8_t>(); target.formula = source["formula"].as<uint8_t>();
+      if (source["pid"].as<int>() < 0 || source["pid"].as<int>() > 255 || source["formula"].as<int>() < 0 || source["formula"].as<int>() > 7) { fail(error, errorSize, "OBD PID must be 0 to 255 and formula 0 to 7."); return false; }
+      // Preserve version-1 defaults when calibration fields are absent.
+      float scale = 1.0f, offset = 0.0f;
+      if (target.pid == 52 && target.formula == 7) scale = (strcmp(target.id, "afr") == 0 ? 14.7f : 1.0f) / 32768.0f;
+      if (target.pid == 14 && target.formula == 6) { scale = 0.5f; offset = -64.0f; }
+      if ((!source["multiplier"].isNull() && !source["multiplier"].is<float>()) || (!source["offset"].isNull() && !source["offset"].is<float>())) { fail(error, errorSize, "OBD multiplier and offset must be numeric."); return false; }
+      target.multiplier = source["multiplier"] | scale;
+      target.offset = source["offset"] | offset;
+      if (!isfinite(target.multiplier) || !isfinite(target.offset)) { fail(error, errorSize, "OBD multiplier and offset must be finite."); return false; }
     } else if (strcmp(type, "analog") == 0) {
       target.type = SOURCE_ANALOG;
       if (!source["pin"].is<int>() || !source["multiplier"].is<float>() || !source["offset"].is<float>()) { fail(error, errorSize, "Analog sources need pin, multiplier, and offset fields."); return false; }
@@ -135,11 +144,11 @@ const char* getDefaultOpenGaugeConfigJson() {
   return R"json({
   "version": 1,
   "dataSources": [
-    {"id":"waterTemp","type":"obd","pid":5,"formula":2},{"id":"intakeTemp","type":"obd","pid":15,"formula":2},{"id":"rpm","type":"obd","pid":12,"formula":3},{"id":"speed","type":"obd","pid":13,"formula":0},{"id":"maf","type":"obd","pid":16,"formula":4},{"id":"lambda","type":"obd","pid":52,"formula":7},{"id":"afr","type":"obd","pid":52,"formula":7},{"id":"ignition","type":"obd","pid":14,"formula":6},{"id":"boostPress","type":"analog","pin":18,"multiplier":30.7692,"offset":-28.2692}
+    {"id":"waterTemp","type":"obd","pid":5,"formula":2},{"id":"intakeTemp","type":"obd","pid":15,"formula":2},{"id":"rpm","type":"obd","pid":12,"formula":3},{"id":"speed","type":"obd","pid":13,"formula":0},{"id":"maf","type":"obd","pid":16,"formula":4}, {"id":"hp","type":"obd","pid":16,"formula":4,"multiplier":1.25,"offset":0},{"id":"lambda","type":"obd","pid":52,"formula":7, "multiplier": 0.000030517578125, "offset": 0},{"id":"afr","type":"obd","pid":52,"formula":7, "multiplier": 0.0004486083984375, "offset": 0},{"id":"ignition","type":"obd","pid":14,"formula":6, "multiplier": 0.5, "offset": -64},{"id":"boostPress","type":"analog","pin":18,"multiplier":30.7692,"offset":-28.2692}
   ],
   "gauges": [
     {"type":"standard","name":"Boost","mainSourceId":"boostPress","minVal":-10,"maxVal":25,"unitLabel":"Boost (PSI)","boostUnits":true,"secondaries":[{"sourceId":"waterTemp","prefix":"Water: ","suffix":"C","rangeColors":true,"lowerThreshold":80,"upperThreshold":105,"colorBelow":"blue","colorBetween":"cyan","colorAbove":"red"},{"sourceId":"intakeTemp","prefix":"AIT: ","suffix":"C","rangeColors":false}]},
-    {"type":"standard","name":"Horsepower","mainSourceId":"maf","minVal":0,"maxVal":300,"unitLabel":"HP","secondaries":[{"sourceId":"maf","prefix":"MAF: ","suffix":" g/s","rangeColors":false}]},
+    {"type":"standard","name":"Horsepower","mainSourceId":"hp","minVal":0,"maxVal":300,"unitLabel":"HP","secondaries":[{"sourceId":"maf","prefix":"MAF: ","suffix":" g/s","rangeColors":false}]},
     {"type":"standard","name":"AFR","mainSourceId":"afr","minVal":10,"maxVal":20,"unitLabel":"AFR","secondaries":[{"sourceId":"lambda","prefix":"Lambda: ","suffix":"","rangeColors":false}]},
     {"type":"standard","name":"Ignition","mainSourceId":"ignition","minVal":-10,"maxVal":40,"unitLabel":"IGN DEG","secondaries":[{"sourceId":"rpm","prefix":"RPM: ","suffix":"","rangeColors":false}]},
     {"type":"shiftlight","name":"Shift Lights","shiftTargets":[6500,6300,6100,6000,5800,0]},
