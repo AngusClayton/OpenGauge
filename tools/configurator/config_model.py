@@ -49,6 +49,10 @@ def validate(config: object) -> list[str]:
         if not isinstance(gauge, dict): errors.append(f'{label} must be an object.'); continue
         kind=gauge.get('type')
         if kind not in GAUGE_TYPES: errors.append(f'{label}.type is not supported.'); continue
+        if kind == 'gmeter':
+            maximum = gauge.get('maxG', 1.5)
+            if type(maximum) not in (int,float) or not math.isfinite(maximum) or not 0.1 <= maximum <= 16:
+                errors.append(f'{label}.maxG must be a number from 0.1 to 16.')
         if not isinstance(gauge.get('name'), str) or not gauge['name']: errors.append(f'{label}.name is required.')
         elif len(gauge['name']) > 31: errors.append(f'{label}.name must be at most 31 characters.')
         if len(str(gauge.get('unitLabel',''))) > 15: errors.append(f'{label}.unitLabel must be at most 15 characters.')

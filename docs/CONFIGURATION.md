@@ -98,6 +98,17 @@ before you connect a sensor.
 Shift-light profiles use `shiftTargets`, an array containing the target RPM for
 gears 1 through 6. Use `0` when a gear has no shift target.
 
+G-meter profiles use `maxG` for the outer ring scale, from 0.1 to 16 g.
+The default is 1.5 g. The inner ring shows half this value. Both the live dot
+and the trail use the same scale. Values beyond the outer ring stay on its
+edge and keep their direction. Peak numbers show the measured values even
+when they exceed the scale. This setting changes the display, not the IMU
+measurement range. For example:
+
+```json
+{"type":"gmeter","name":"G Meter","maxG":2.0}
+```
+
 Standard-gauge fields:
 
 | Field | Use |

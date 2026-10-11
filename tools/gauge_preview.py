@@ -65,6 +65,8 @@ def render_config_preview(config, gauge_index, samples, output, scale=1):
                 fields += ['range', str(secondary.get('lowerThreshold',0)), str(secondary.get('upperThreshold',100)),
                            secondary.get('colorBelow','blue'), secondary.get('colorBetween','cyan'), secondary.get('colorAbove','red')]
             args += ['--secondary', ','.join(fields)]
+    elif gauge_type == 'gmeter':
+        args += ['--max-g', str(gauge.get('maxG',1.5))]
     elif gauge_type == 'shiftlight':
         targets=gauge.get('shiftTargets',[6500,6300,6100,6000,5800,0])
         args += ['--shift-targets', ','.join(str(int(value)) for value in targets)]
@@ -88,6 +90,7 @@ def main():
     p.add_argument('--secondary',action='append',default=[],metavar='SOURCE,PREFIX,SUFFIX[,range,low,high,below,between,above]')
     p.add_argument('--offline',action='store_true',help='simulate an offline IMU'); p.add_argument('-o','--output',type=Path,default=Path('preview.png'))
     p.add_argument('--scale',type=int,default=1)
+    p.add_argument('--max-g',type=float,default=1.5,help='G-meter outer ring scale in g (0.1 to 16)')
     a=p.parse_args()
     if a.config:
         config=json.loads(a.config.read_text(encoding='utf-8'))
@@ -97,6 +100,7 @@ def main():
     else:
         cmd=['--type',a.type,'--main-source',a.main_source,'--min',str(a.min),'--max',str(a.max),'--unit',a.unit]
         for v in a.value: cmd += ['--value',v]
+        cmd += ['--max-g',str(a.max_g)]
         for s in a.secondary: cmd += ['--secondary',s]
         if a.boost_units: cmd += ['--boost-units']
         if a.offline: cmd += ['--offline']

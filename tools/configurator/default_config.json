@@ -27,7 +27,7 @@
       { "sourceId": "rpm", "prefix": "RPM: ", "suffix": "", "rangeColors": false }
     ] },
     { "type": "shiftlight", "name": "Shift Lights", "shiftTargets": [6500, 6300, 6100, 6000, 5800, 0] },
-    { "type": "gmeter", "name": "G Meter" },
+    { "type": "gmeter", "name": "G Meter", "maxG": 1.5 },
     { "type": "accelTimer", "name": "0-100 Timer", "mainSourceId": "speed", "minVal": 0, "maxVal": 100, "unitLabel": "km/h" }
   ]
 }

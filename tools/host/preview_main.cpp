@@ -19,7 +19,7 @@
 // Production renderer entry points (kept private in the firmware header today).
 void renderGenericGauge(const GaugeConfig& config);
 void renderShiftLightGauge();
-void renderGmeterGauge();
+void renderGmeterGauge(float maxG);
 void renderAccelerationTimerGauge();
 void setShiftTargetRpm(uint8_t gear, uint16_t targetRpm);
 
@@ -73,6 +73,7 @@ int main(int argc, char** argv) {
     else if(a=="--main-source") mainSource=next();
     else if(a=="--min") minVal=std::stof(next());
     else if(a=="--max") maxVal=std::stof(next());
+    else if(a=="--max-g") cfg.maxG=std::stof(next());
     else if(a=="--unit") unit=next();
     else if(a=="--boost-units") boostUnits=true;
     else if(a=="--offline") imuReady=false;
@@ -127,7 +128,7 @@ int main(int argc, char** argv) {
   cfg.minVal=minVal; cfg.maxVal=maxVal; cfg.boostUnits=boostUnits;
   Paint_NewImage((UBYTE*)BlackImage,240,240,ROTATE_0,BLACK); Paint_SetScale(65);
   if(type=="shiftlight") renderShiftLightGauge();
-  else if(type=="gmeter") renderGmeterGauge();
+  else if(type=="gmeter") renderGmeterGauge(cfg.maxG);
   else if(type=="accelTimer") {
     // A preview process has no prior display frames. Create one stopped frame,
     // then one moving frame, so the final frame shows a real timer state.

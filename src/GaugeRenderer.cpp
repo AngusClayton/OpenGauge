@@ -540,16 +540,22 @@ void renderAccelerationTimerGauge() {
   LCD_1IN28_Display(BlackImage);
 }
 
-void renderGmeterGauge() {
+void renderGmeterGauge(float maxG) {
   Paint_Clear(BLACK);
 
   const int cx = 120;
   const int cy = 120;
   const int radius = 72;
   const int dotRadius = 7;
-  const int maxDotTravel = radius - dotRadius - 2;
   static constexpr UWORD kGmeterGridColor = 0x4208;
-  constexpr float kGmeterDisplayRange = 1.5f;
+  const float range = isfinite(maxG) && maxG >= 0.1f && maxG <= 16.0f ? maxG : 1.5f;
+  // Preserve direction when an over-range vector reaches the outer ring.
+  auto position = [&](float lateral, float longitudinal, int& x, int& y) {
+    const float magnitude = sqrtf(lateral * lateral + longitudinal * longitudinal);
+    const float scale = radius / (magnitude > range ? magnitude : range);
+    x = cx + (int)(lateral * scale);
+    y = cy - (int)(longitudinal * scale);
+  };
   constexpr uint32_t kGforceTrailWindowMs = 5000;
 
   Paint_DrawCircle((UWORD)cx, (UWORD)cy, (UWORD)radius, kGmeterGridColor, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
@@ -557,8 +563,11 @@ void renderGmeterGauge() {
   Paint_DrawLine((UWORD)(cx - radius), (UWORD)cy, (UWORD)(cx + radius), (UWORD)cy, kGmeterGridColor, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
   Paint_DrawLine((UWORD)cx, (UWORD)(cy - radius), (UWORD)cx, (UWORD)(cy + radius), kGmeterGridColor, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
   Paint_DrawCircle((UWORD)cx, (UWORD)cy, 2, kGmeterGridColor, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-  drawTextFixed(cx + 51, cy - 57, "1.5g", &Font_nokia_8, GRAY, BLACK);
-  drawTextFixed(cx + 25, cy - 31, "0.75g", &Font_nokia_8, GRAY, BLACK);
+  char axisLabel[16];
+  snprintf(axisLabel, sizeof(axisLabel), "%.3gg", (double)range);
+  drawTextFixed(cx + 51, cy - 57, axisLabel, &Font_nokia_8, GRAY, BLACK);
+  snprintf(axisLabel, sizeof(axisLabel), "%.3gg", (double)(range / 2));
+  drawTextFixed(cx + 25, cy - 31, axisLabel, &Font_nokia_8, GRAY, BLACK);
 
   if (!isImuReady()) {
     drawCenteredTextFixed(92, "IMU OFFLINE", &Font_nokia_12, RED, BLACK);
@@ -586,18 +595,13 @@ void renderGmeterGauge() {
       peakLongitudinal = peak.longitudinalG;
     }
 
-    const float lateral = clampFloat(peak.lateralG, -kGmeterDisplayRange, kGmeterDisplayRange);
-    const float longitudinal = clampFloat(peak.longitudinalG, -kGmeterDisplayRange, kGmeterDisplayRange);
-    const int trailX = cx + (int)((lateral / kGmeterDisplayRange) * (float)maxDotTravel);
-    const int trailY = cy - (int)((longitudinal / kGmeterDisplayRange) * (float)maxDotTravel);
+    int trailX, trailY;
+    position(peak.lateralG, peak.longitudinalG, trailX, trailY);
     Paint_DrawCircle((UWORD)trailX, (UWORD)trailY, 3, GRAY, DOT_PIXEL_1X1, DRAW_FILL_FULL);
   }
 
-  const float lateral = clampFloat(getLateralG(), -kGmeterDisplayRange, kGmeterDisplayRange);
-  const float longitudinal = clampFloat(getLongitudinalG(), -kGmeterDisplayRange, kGmeterDisplayRange);
-
-  const int dotX = cx + (int)((lateral / kGmeterDisplayRange) * (float)maxDotTravel);
-  const int dotY = cy - (int)((longitudinal / kGmeterDisplayRange) * (float)maxDotTravel);
+  int dotX, dotY;
+  position(getLateralG(), getLongitudinalG(), dotX, dotY);
   Paint_DrawCircle((UWORD)dotX, (UWORD)dotY, (UWORD)dotRadius, RED, DOT_PIXEL_1X1, DRAW_FILL_FULL);
 
   char buffer[64];
@@ -730,7 +734,7 @@ void renderDisplay() {
       renderShiftLightGauge();
       return;
     case GAUGE_TYPE_GMETER:
-      renderGmeterGauge();
+      renderGmeterGauge(config.maxG);
       return;
     case GAUGE_TYPE_ACCEL_TIMER:
       renderAccelerationTimerGauge();

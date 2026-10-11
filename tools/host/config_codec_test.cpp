@@ -11,6 +11,16 @@ int main() {
   const char* defaults = getDefaultOpenGaugeConfigJson();
   assert(parseOpenGaugeConfig(defaults, std::strlen(defaults), config, error, sizeof(error)));
   assert(config.dataSourceCount == 10);
+  assert(config.gauges[5].maxG == 1.5f);
+  for (const char* setting : {"2.0", "0", "-1", "17", "\"bad\""}) {
+    std::string changed(defaults);
+    const auto at = changed.find("\"maxG\":1.5");
+    changed.replace(at, std::strlen("\"maxG\":1.5"), std::string("\"maxG\":") + setting);
+    const bool valid = parseOpenGaugeConfig(changed.c_str(), changed.size(), config, error, sizeof(error));
+    assert(valid == (std::strcmp(setting,"2.0") == 0));
+    if (valid) assert(config.gauges[5].maxG == 2.0f);
+  }
+  assert(parseOpenGaugeConfig(defaults, std::strlen(defaults), config, error, sizeof(error)));
   auto value = [&](const char* id, uint16_t raw) {
     for (size_t i=0; i<config.dataSourceCount; ++i)
       if (std::strcmp(config.dataSources[i].id,id)==0) return evaluateObdSource(config.dataSources[i],raw);

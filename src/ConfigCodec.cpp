@@ -103,6 +103,12 @@ bool parseOpenGaugeConfig(const char* json, size_t length,
     if (strlen(unitLabel) >= sizeof(target.unitLabel)) { fail(error, errorSize, "Gauge unit labels must be at most 15 characters."); return false; }
     snprintf(target.unitLabel, sizeof(target.unitLabel), "%s", unitLabel);
     target.boostUnits = gauge["boostUnits"] | false;
+    target.maxG = gauge["maxG"] | 1.5f;
+    if (target.type == GAUGE_TYPE_GMETER &&
+        ((!gauge["maxG"].isNull() && !gauge["maxG"].is<float>()) ||
+         !isfinite(target.maxG) || target.maxG < 0.1f || target.maxG > 16.0f)) {
+      fail(error, errorSize, "G-meter maxG must be a number from 0.1 to 16."); return false;
+    }
 
     if (target.type == GAUGE_TYPE_STANDARD || target.type == GAUGE_TYPE_ACCEL_TIMER) {
       if (!hasSource(output, target.mainSourceId) || !isfinite(target.minVal) || !isfinite(target.maxVal) || target.minVal >= target.maxVal) {
@@ -152,7 +158,7 @@ const char* getDefaultOpenGaugeConfigJson() {
     {"type":"standard","name":"AFR","mainSourceId":"afr","minVal":10,"maxVal":20,"unitLabel":"AFR","secondaries":[{"sourceId":"lambda","prefix":"Lambda: ","suffix":"","rangeColors":false}]},
     {"type":"standard","name":"Ignition","mainSourceId":"ignition","minVal":-10,"maxVal":40,"unitLabel":"IGN DEG","secondaries":[{"sourceId":"rpm","prefix":"RPM: ","suffix":"","rangeColors":false}]},
     {"type":"shiftlight","name":"Shift Lights","shiftTargets":[6500,6300,6100,6000,5800,0]},
-    {"type":"gmeter","name":"G Meter"},
+    {"type":"gmeter","name":"G Meter","maxG":1.5},
     {"type":"accelTimer","name":"0-100 Timer","mainSourceId":"speed","minVal":0,"maxVal":100,"unitLabel":"km/h"}
   ]
 })json";

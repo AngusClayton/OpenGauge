@@ -33,5 +33,6 @@ struct GaugeConfig {
     SecondaryMetric secondaries[3];
     uint8_t secondaryCount;
     bool boostUnits;
+    float maxG = 1.5f;
     uint16_t shiftTargets[6];
 };
